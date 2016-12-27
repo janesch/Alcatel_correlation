@@ -1,0 +1,43 @@
+/*
+    NG_NewTrigger.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and checks the state of an AME on new trigger insert
+    
+    V 0.0   20120515    Chris Janes     Original development
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    
+*/
+Log("Starting NG_NewTrigger");
+ 
+NewDataType = "OutageTriggerTracking";
+NewFilter = "EventLock = 2";
+Log ("NewFilter = " + NewFilter ) ;
+NewCountOnly = False;
+NewTriggers = GetByFilter(NewDataType, NewFilter, NewCountOnly);
+NumNewTriggers  = Num;
+Log ("NumNewTriggers = " + NumNewTriggers ) ;
+// If trhere are any to be processed
+CountNewTriggers = NumNewTriggers;
+While (CountNewTriggers  > 0) 
+{
+    CountNewTriggers = CountNewTriggers - 1;
+    ETDataType = "OutageTriggerTracking";
+    ETFilter = "ServerName = '" + NewTriggers[CountNewTriggers].ServerName + "' AND ServerSerial = " + NewTriggers[CountNewTriggers].ServerSerial + " and EventLock = 1";
+    Log ("ETFilter = " + ETFilter ) ;
+    ETCountOnly = False;
+    ETTriggers = GetByFilter(ETDataType, ETFilter, ETCountOnly);
+    NumETTriggers  = Num;
+    
+    if (NumETTriggers == 0)
+    {
+        UpdateExpression = "EventLock = 0";
+    }
+    else
+    {
+        UpdateExpression = "EventLock = 1";
+    }        
+    DataType = "OutageTriggerTracking";
+    UpdateFilter = "ServerName = '" + NewTriggers[CountNewTriggers].ServerName + "' AND ServerSerial = " + NewTriggers[CountNewTriggers].ServerSerial;
+    BatchUpdate(DataType, UpdateFilter, UpdateExpression);
+}
+Log("Exiting NG_NewTrigger");

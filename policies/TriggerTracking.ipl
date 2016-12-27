@@ -1,0 +1,99 @@
+/*
+    Trigger Tracking.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and contorls which triggers are processed
+    
+    V 0.0   20120515    Chris Janes     Original development
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    
+*/
+Log("Trigger Tracking Policy Starting"); 
+NowTime = GetDate(); 
+
+// Get any entries from the Tracking table that are due to be processed
+DataType = "OutageTriggerTracking";
+Filter = NowTime + " > TriggerTime ";
+Log ("Filter = " + Filter ) ;
+CountOnly = False;
+Triggers = GetByFilter(DataType, Filter, CountOnly);
+NumTriggers  = Num;
+Log ("NumTriggers = " + NumTriggers ) ;
+
+
+// If trhere are any to be processed
+CountTriggers = NumTriggers ;
+While (CountTriggers  > 0) 
+{
+    // If this EventTrigger has reached it's retry count then remove from the table
+    if(Triggers[CountTriggers -1].RetryCount == 0)
+    {
+        // Delete Trigger
+        DeleteFilter = "ServerName = '" + Triggers[CountTriggers -1].ServerName + "' AND ServerSerial = " + Triggers[CountTriggers -1].ServerSerial + " AND TriggerId = '" + Triggers[CountTriggers -1].TriggerId + "'";
+        Log ("DeleteFilter = " + DeleteFilter ) ;
+        DataType = "OutageTriggerTracking";
+        BatchDelete(DataType, DeleteFilter , NULL);
+        // Here we need to trigger Not Matched Action
+        TriggerAction = "Not Matched";
+        log("Activating policy NG_Actions");
+        Activate(NULL, "NG_Actions");        
+    }
+    else
+    {
+        Log("Triggers.EventId = " + Triggers[CountTriggers -1].EventId  );
+        
+        // Get the retry time
+        DataType = "OutageTriggerDefinition";
+        Filter = "'" + Triggers[CountTriggers -1].TriggerID + "' = TriggerId";
+        Log ("Filter = " + Filter ) ;
+        CountOnly = False;
+        Definition = GetByFilter(DataType, Filter, CountOnly);
+        NumDefinition  = Num;
+        Log ("NumDefinition = " + NumDefinition ) ;
+        
+        if (NumDefinition > 0)//Check we have data
+        {
+            // Update trigger retrys and time for next processing
+            TriggerTime = GetDate();
+            Log ("TT = " + TriggerTime + "RT = " + Definition[0].RetryTime + "  RC = " + Triggers[CountTriggers -1].RetryCount);
+            TriggerTime = NowTime + Definition[0].RetryTime;
+            RetryCount = Triggers[CountTriggers -1].RetryCount -1;
+             //RetryCount = 2;
+            Log ("TT = " + TriggerTime + "  RC = " + RetryCount);
+            // Add batch update
+            Filter = "ServerName = '" + Triggers[CountTriggers -1].ServerName + "' AND ServerSerial = " + Triggers[CountTriggers -1].ServerSerial + " AND TriggerId = '" + Triggers[CountTriggers -1].TriggerId + "'";
+            DataType = "OutageTriggerTracking";
+            UpdateExpression = "RetryCount = " + RetryCount + ", TriggerTime = " + TriggerTime ;
+            BatchUpdate(DataType, Filter, UpdateExpression);
+            
+            //Now activate the policy associated with this trigger
+            TriggerPolicy = Definition[0].TriggerPolicy;
+            log("TriggerPolicy = " + TriggerPolicy);
+            TriggerParameter = Definition[0].TriggerParameter;
+            log("TriggerParameter = " + TriggerParameter);
+            ServerName = Triggers[CountTriggers -1].ServerName;
+            log("ServerName = " + ServerName );
+            ServerSerial = Triggers[CountTriggers -1].ServerSerial ;
+            log("ServerSerial = " + ServerSerial );
+            TriggerId = Triggers[CountTriggers -1].TriggerId ;
+            log("TriggerId = " + TriggerId );
+            
+            if (length(TriggerPolicy) > 0)
+            {
+                log("Activating policy " + TriggerPolicy);
+                Activate(NULL, TriggerPolicy);
+            }
+            else
+            {
+                Log("No Policy Defined");
+                // is there a default action?
+            }
+        }
+        else
+        {
+            //We Dont Have data so best we flag this
+        }
+    }
+    CountTriggers  = CountTriggers  - 1;
+}
+Log("Trigger Tracking Policy Stopping\n\n\n"); 
+

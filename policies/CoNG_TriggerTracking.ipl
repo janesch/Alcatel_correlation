@@ -1,0 +1,268 @@
+/*
+    CoNG_TriggerTracking.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and contorls which triggers are processed
+    
+    V 0.0   20120515    Chris Janes     Original development
+    V 0.1   20120613    Chris Janes     New Version usingmultiple instances of this Policy
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    Last Update 20120702:10.29
+    
+*/
+ 
+ 
+STI_ARRAY = {};
+STATUS_NVP = {};
+Num_STI_ARRAY = 0; 
+ 
+Log("Trigger Tracking Policy Starting"); 
+NowTime = GetDate(); 
+// Set ImpactFlag to stop reprocessing
+EventContainer.ImpactFlag = 1010;
+ReturnEvent(EventContainer);
+// Get data from Trigger definitions file and Update Trigger tracking Table
+TriggerDefDataType = "OutageTriggerDefinition";
+TriggerDefFilter = "EventId = '" + EventContainer.EventId + "'";
+Log ("TriggerDefFilter = " + TriggerDefFilter ) ;
+CountOnly = False;
+TriggerDef = GetByFilter(TriggerDefDataType, TriggerDefFilter, CountOnly);
+NumTriggerDef  = Num;
+Log ("NumTriggerDef = " + NumTriggerDef ) ;
+ 
+if ( NumTriggerDef > 0)
+{
+    // We have a Trigger Def so lets create an entry in the tracking table
+    Log("Create Entry in Tracking Table");
+    CountTriggerDef = NumTriggerDef;
+    while ( CountTriggerDef > 0)
+    {
+        CountTriggerDef = CountTriggerDef -1;
+        objNewTrigger = NewObject();
+        objNewTrigger.ServerName = EventContainer.ServerName;
+        objNewTrigger.ServerSerial = EventContainer.ServerSerial;
+        objNewTrigger.TriggerId = TriggerDef[CountTriggerDef].TriggerId;
+        objNewTrigger.EventId = EventContainer.EventId;       
+        objNewTrigger.Precedence = TriggerDef[CountTriggerDef].Precedence;       
+        objNewTrigger.TriggerTime = Getdate();      
+        objNewTrigger.RetryCount = TriggerDef[CountTriggerDef].RetryAttempts;       
+        objNewTrigger.EventLock = TriggerDef[CountTriggerDef].EventLock;     
+        objNewTrigger.RetryTime = TriggerDef[CountTriggerDef].RetryTime;     
+        objNewTrigger.TriggerPolicy = TriggerDef[CountTriggerDef].TriggerPolicy;    
+        objNewTrigger.TriggerParameter = TriggerDef[CountTriggerDef].TriggerParameter; 
+        objNewTrigger.OTFailPolicy = TriggerDef[CountTriggerDef].OTFailPolicy;     
+        objNewTrigger.OTFailParameter = TriggerDef[CountTriggerDef].OTFailParameter; 
+        objNewTrigger.OTFailAction = TriggerDef[CountTriggerDef].OTFailAction;     
+        objNewTrigger.TriggerAction = TriggerDef[CountTriggerDef].TriggerAction;    
+        objNewTrigger.Delay = TriggerDef[CountTriggerDef].Delay;    
+        objNewTrigger.Containment = TriggerDef[CountTriggerDef].Containment;
+        objMyTrigger = AddDataItem('OutageTriggerTracking', objNewTrigger);
+        
+        Log(" New Trigger " + EventContainer.EventId + " " + TriggerDef[CountTriggerDef].TriggerId);
+    }
+    PolicyProcess = 1;
+}
+else
+{
+    // No Entry found in Trigger Definitions so exit
+    Log("No Entry found in Trigger Definitions");
+    PolicyProcess = 0;
+    EventContainer.ImpactFlag = 8000;
+    ReturnEvent(EventContainer);
+}
+/* ----------------------------------------------------------------------------------------
+Here is the code to delay processing for max delay of any Fault trigger associated
+with this event
+---------------------------------------------------------------------------------------- */
+
+DelayDataSource = "defaultobjectserver";
+DelayQuery = "select max( Delay) from CoNG.NG_OutageTriggerTracking where ServerName = '" + EventContainer.ServerName + "' AND ServerSerial = " + EventContainer.ServerSerial;
+Log ("DelayQuery = " + DelayQuery ) ;
+CountOnly = False;
+Delay = DirectSQL(DelayDataSource, DelayQuery , CountOnly);
+NumDelay = Length(Delay);
+if (NumDelay = 1)
+{
+    if(Delay[0].Delay >0)
+    {
+        // We have a delay so hibernate
+        WaitTime = Delay[0].Delay;
+        Log("WaitTime = " + WaitTime );
+        ActionKey = "CoNG_TrackingDelay " + @ServerName + " " + @ServerSerial;
+        Log("Going to Delay Hibernating "  + ActionKey + " for " + WaitTime + " Sec");
+        Hibernate(ActionKey , "wait", WaitTime );
+        Log("Waking from Delay Hibernating "  + ActionKey + " for " + WaitTime + " Sec");
+        RemoveHibernation(ActionKey); 
+    }
+}
+ 
+/* ----------------------------------------------------------------------------------------
+Here is the code to process the Fault triggers, looping around whilst there is work to do 
+---------------------------------------------------------------------------------------- */
+
+while(PolicyProcess > 0)
+{
+    Log("Into Trigger Process Loop");
+
+    // Is there any Triggers to activate
+    // Get any entries from the Tracking table that are due to be processed
+    DataType = "OutageTriggerTracking";
+    Filter = "ServerName = '" + EventContainer.ServerName + "' AND ServerSerial = " + EventContainer.ServerSerial;
+    Log ("Filter = " + Filter ) ;
+    CountOnly = False;
+    Triggers = GetByFilter(DataType, Filter, CountOnly);
+    NumTriggers  = Length(Triggers);
+    Log ("NumTriggers = " + NumTriggers ) ;
+    // yes there is    
+
+
+
+    if ( NumTriggers > 0)
+    {
+        /*  -----------------------------------------------------------------------------
+        Get first trigger, the triggers are order by precidence. We only ever process 
+        the trigger from the top of the list removng them from the list when either when 
+        completed no of retries or when matched. In this case we remove all triggers for
+        this event
+        -----------------------------------------------------------------------------   */
+        // Is the Event Locked
+        if(Triggers[0].EventLock = 1)
+        {
+        // is the first one locked
+            // Yes Wait time - 1
+            Log("Event Locked so wait 1 sec");
+            WaitTime = 1;
+        }
+        else // the event is not locked so let process it
+        {
+            Log("Triggers[0].RetryCount = " + Triggers[0].RetryCount);
+            
+
+            if(Triggers[0].RetryCount > 0)  //  If there are retrys left 
+            {
+                Log("We Have a Retry");
+                
+                // Lock Event
+                // Update control table
+                //TriggerTime = GetDate();
+                //Log ("TT = " + TriggerTime + "  RT = " + Triggers[0].RetryTime + "  RC = " + Triggers[0].RetryCount);
+                TriggerTime = Int(NowTime) + Int(Triggers[0].RetryTime);
+                RetryCount = Triggers[0].RetryCount -1;
+                //RetryCount = 2;
+                Log ("TT = " + TriggerTime + "  RC = " + RetryCount);
+                
+                
+                Log("Update Trigger Tracking Table");
+                // Add batch update
+                Filter = "ServerName = '" + Triggers[0].ServerName + "' AND ServerSerial = " + Triggers[0].ServerSerial + " AND TriggerId = '" + Triggers[0].TriggerId + "'";
+                Log("Filter = " + Filter);
+                DataType = "OutageTriggerTracking";
+                UpdateExpression = "RetryCount = " + RetryCount + ", TriggerTime = " + TriggerTime ;
+                Log("UpdateExpression = " + UpdateExpression);
+                BatchUpdate(DataType, Filter, UpdateExpression);
+                
+                Log("Prepare to Activate Policy");
+                // Activate Policy
+                TriggerPolicy = Triggers[0].TriggerPolicy;
+                log("TriggerPolicy = " + TriggerPolicy);
+                TriggerParameter = Triggers[0].TriggerParameter;
+                log("TriggerParameter = " + TriggerParameter);
+                ServerName = Triggers[0].ServerName;
+                log("ServerName = " + ServerName );
+                ServerSerial = Triggers[0].ServerSerial ;
+                log("ServerSerial = " + ServerSerial );
+                TriggerId = Triggers[0].TriggerId ;
+                log("TriggerId = " + TriggerId );
+                TriggerAction = Triggers[0].TriggerAction ;
+                log("TriggerAction = " + TriggerAction );
+                OTFailAction = Triggers[0].OTFailAction ;
+                log("OTFailAction = " + OTFailAction );
+                
+                Containment = Triggers[0].Containment ;
+                log("Containment = " + Containment );
+                
+                BehaviourStatus = 'Processing';
+                if (length(TriggerPolicy) > 0)
+                {
+                    log("Activating policy " + TriggerPolicy);
+                    Activate(NULL, TriggerPolicy);
+                }
+                else
+                {
+                    Log("No Policy Defined");
+                    // is there a default action?
+                }
+                // Set wait time
+                NowTime = GetDate(); 
+                WaitTime = TriggerTime - NowTime;
+            }
+    /*  -----------------------------------------------------------------------------
+    
+    run out of retries so no delay and remove this Fault Trigger from tracking list so 
+    we will not re-process it
+    
+    -----------------------------------------------------------------------------   */
+
+            if(RetryCount = 0)  // If we have run out of retries
+            {
+                Log("RetryCount = 0 ");
+                // Activate Action Policy
+                ServerName = Triggers[0].ServerName;
+                log("ServerName = " + ServerName );
+                ServerSerial = Triggers[0].ServerSerial ;
+                log("ServerSerial = " + ServerSerial );
+                TriggerId = Triggers[0].TriggerId ;
+                log("TriggerId = " + TriggerId );
+                TriggerAction = Triggers[0].TriggerAction ;
+                log("TriggerAction = " + TriggerAction );
+                BehaviourStatus = 'NotMatched';
+                OTFailPolicy = "CoNG_Actions";
+                if (length(TriggerPolicy) > 0)
+                {
+                    log("Activating Fail Policy " + OTFailPolicy);
+                    Activate(NULL, OTFailPolicy);
+                }
+                else
+                {
+                    Log("No Policy Defined");
+                    // is there a default action?
+                }  
+                WaitTime = 0;
+            }
+        }
+    }
+else    // No triggers to activate
+    {
+        // exit
+        PolicyProcess = 0;
+        WaitTime = 0;
+    }
+
+
+    /*  -----------------------------------------------------------------------------
+    
+    if we need to wait then lets wait
+    
+    -----------------------------------------------------------------------------   */
+
+    if(PolicyProcess = 1)
+    {
+        Log("Hibernate Process");
+        // Hibernate
+        if (WaitTime > 0)
+        {
+            WaitTime = 1;
+            Log("WaitTime = " + WaitTime );
+            ActionKey = "CoNG_Tracking " + @ServerName + " " + @ServerSerial;
+            Log("Going to Hibernating "  + ActionKey + " for " + WaitTime + " Sec");
+            Hibernate(ActionKey , "wait", WaitTime );
+            Log("Waking from Hibernating "  + ActionKey + " for " + WaitTime + " Sec");
+            RemoveHibernation(ActionKey); 
+        }
+        else
+        {
+            Log("WaitTime = 0 so no hibernate");
+        }
+    }
+    // Loop
+}
+Log("Trigger Tracking Policy Ending"); 

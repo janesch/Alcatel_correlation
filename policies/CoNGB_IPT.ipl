@@ -1,0 +1,111 @@
+/*
+    CoNGB_IPT.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting CoNGB_IPT");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+
+
+
+if(TriggerParameter = "tr485LinkDown")
+{
+    Log("Into tr485LinkDown");
+    // Get Event Info
+    // Look up BaseEvent
+    NEDataType = "ha_ncoms_impact_events";
+    NEFilter = "ServerName = '"  + ServerName + "' and ServerSerial = "  + ServerSerial;
+    Log ("NEFilter = " + NEFilter ) ;
+    CountOnly = False;
+    NE = GetByFilter(NEDataType, NEFilter, CountOnly);
+    NumNE = Length(NE);
+    if(NumNE = 1)
+    {
+        Log("Into Network Event");
+        SYSNAME = NE[0].Node;
+        
+// Get STI affected
+//      lookup Asset_ID from ViewAssetNetcool
+        AssetDataType = "Circee_Host_Table";
+        AssetFilter = "SYSNAME = '"  + SYSNAME + "'";
+        Log ("AssetFilter = " + AssetFilter ) ;
+        CountOnly = False;
+        Asset = GetByFilter(AssetDataType, AssetFilter, CountOnly);
+        NumAsset = Length(Asset);
+        Log("NumAsset = " + NumAsset );
+        if(NumAsset = 1)
+        {
+            Log("Into ASSET_ID");
+            ASSET_ID = Asset[0].ASSET_ID;
+            
+            //      Look up all STI where Asset_ID from above
+            STIDataType = "Circee_View_Asset_STI";
+            STIFilter = "ASSET_ID = "  + ASSET_ID ;
+            Log ("STIFilter = " + STIFilter ) ;
+            CountOnly = False;
+            STI = GetByFilter(STIDataType, STIFilter, CountOnly);
+            NumSTI = Length(STI);
+            if(NumSTI > 0)     
+            {
+                Log("Into STI_ARRAY  ");
+                STI_COUNT = 0;
+                while (STI_COUNT < NumSTI)
+                {
+                    STI_ARRAY = STI_ARRAY + STI[STI_COUNT].STI_ID;
+                    STI_COUNT = STI_COUNT + 1 ;
+                }
+                Log ("STI_ARRAY = " + STI_ARRAY ) ;
+                Log ("STI_COUNT = " + STI_COUNT ) ;
+            }
+            else
+            {
+                STI_ARRAY = STI_ARRAY + "No STI Data Found";
+            }
+            // This is the info passed to Actions
+            STI_ARRAY = distinct(STI_ARRAY);
+            Log ("STI_ARRAY = " + STI_ARRAY ) ;
+        }
+        else
+        {
+            // Epic Fail - no ViewAssetNetcool Data
+            Log("Epic Fail - no ViewAssetNetcool Data");
+        }
+    }
+    else
+    {
+        // Epic Fail  - no event left
+        Log("Epic Fail - no ViewAssetNetcool Data");
+    }
+
+    //Log("Activating Actions");
+    BehaviourStatus = "Matched";
+    //Activate (NULL, "NG_Actions");
+    //Log("Activated Actions");
+
+}
+else if(TriggerParameter = "trThreshVoltageAlarm")
+{
+    // Do Nothing - Testing AlarmClass : trThreshVoltageAlarm.cmvOutOfRange(6)
+    Log("Into trThreshVoltageAlarm");
+}
+else
+{
+    BehaviourStatus = 'CoNG_Error TriggerParameter Not Found';
+    Log("CoNG_Error TriggerParameter Not Found");
+}
+ 
+ 
+ 
+Log("Activating Actions");
+Activate (NULL, "CoNG_Actions");
+Log("Activated Actions"); 
+ 
+ 
+ 
+ 
+Log("Exiting CoNGB_IPT");

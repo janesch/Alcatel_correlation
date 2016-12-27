@@ -1,0 +1,114 @@
+/*
+    CoNGB_CellStack.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting CoNGB_CellStack");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+NVP = "";
+
+
+
+if ( TriggerParameter = 'csNmsTrapBoardNoVideoSync')
+{
+    Log(LogPrefix + " MMLITE IAMS Outage Trigger 6");
+    /*
+        Requirement:
+            BoardNoVideoSync alarm received from Cellstack element manager  
+            If it has a End Device connected to it then
+            ActionRequired = 1;
+            ServiceAffecting = 1;
+            INV_EndDevice_SystemType = SYSTEM_TYPE of end device
+            STI_HA_Impact = STI_HA_IMPACT of end device
+            STIRef = STI of End Device
+            STINum = 1
+            Reporter_STIRef ServerSerial and STIRef
+    */
+    Log("Into csNmsTrapBoardNoVideoSync");
+    // Get Event Info
+    // Look up BaseEvent
+    NEDataType = "ha_ncoms_impact_events";
+    NEFilter = "ServerName = '"  + ServerName + "' and ServerSerial = "  + ServerSerial;
+    Log ("NEFilter = " + NEFilter ) ;
+    CountOnly = False;
+    NE = GetByFilter(NEDataType, NEFilter, CountOnly);
+    NumNE = Length(NE);
+    if(NumNE = 1)
+    {
+        Log("Into Network Event");
+        SYSNAME = NE[0].Node;
+        
+        // Is there an end device connected
+        //Find records in the interfaces table
+//        InterfaceDataSource = "Circee";
+        InterfaceDataSource = "defaultobjectserver";
+        InterfaceAssetFilter = "Select ASSET_ID, SYSNAME from Circee.View_Asset_Netcool where Category_Abbr = 'EDV' and SYSNAME in ( select L2_SYSNAME from Circee.Netcool_L1_L2 where L1_SYSNAME = '"  + SYSNAME + "')";
+        Log ("InterfaceAssetFilter = " + InterfaceAssetFilter ) ;
+        CountOnly = False;
+        Interface = DirectSQL(InterfaceDataSource, InterfaceAssetFilter, CountOnly);
+        NumInterface = Length(Interface);
+        Log("NumInterface = " + NumInterface );
+        if(NumInterface > 0 )
+        {
+            Log("ASSET_ID = " + Interface[0].ASSET_ID);
+            Log("SYSNAME = " + Interface[0].SYSNAME);
+            ValRemoteNode = "RemoteNode:"+ Interface[0].SYSNAME;
+            STATUS_NVP = STATUS_NVP + ValRemoteNode;
+            STATUS_NVP = STATUS_NVP + "Severity:5";
+            
+            CAMDataType = "Circee_View_Asset_STI";
+            CAMFilter = "ASSET_ID = "  + Interface[0].ASSET_ID + " and Category_Abbr = '10'";
+            Log ("NEFilter = " + NEFilter ) ;
+            CountOnly = False;
+            CAM = GetByFilter(CAMDataType, CAMFilter, CountOnly);
+            NumCAM = Length(CAM);
+            Log("NumCAM = " + NumCAM );
+            if (NumCAM > 0)
+            {
+                Log("STI_ID = " + CAM[0].STI_ID);
+                STI_ARRAY = STI_ARRAY + CAM[0].STI_ID;
+                Num_STI_ARRAY = 1;
+                ValSTI_HA_Impact = "STI_HA_Impact:"+ CAM[0].STI_HA_Impact;
+                STATUS_NVP = STATUS_NVP + ValSTI_HA_Impact;
+            }
+
+        }
+        BehaviourStatus = "Matched";
+    }
+    else
+    {
+        Log("No Network Event Found");
+        BehaviourStatus = "Not Matched";
+    }
+        
+        
+   
+}
+elseif(AlarmClass = 'csNmsTrapLossOfConnection')
+{
+    
+    
+        BehaviourStatus = "Not Matched";
+    
+}
+
+else
+{
+    BehaviourStatus = 'CoNG_Error TriggerParameter Not Found';
+    Log("CoNG_Error TriggerParameter Not Found");
+}
+ 
+ 
+Log("STATUS_NVP = " + STATUS_NVP);
+Log("BehaviourStatus = " + BehaviourStatus);
+ 
+Log("Activating Actions");
+Activate (NULL, "CoNG_Actions");
+Log("Activated Actions"); 
+ 
+Log("Exiting CoNGB_CellStack");

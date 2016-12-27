@@ -1,0 +1,18 @@
+//
+
+log ("Into Test1");
+
+
+Activate(null, 'Test2');
+
+log ("Activate done");
+
+
+
+Hibernate('ACTIONKEY123', 'testing', 10);
+
+log ("Hibernate done");
+
+
+
+log ("Exit Test1");

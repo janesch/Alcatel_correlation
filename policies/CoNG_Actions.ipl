@@ -1,0 +1,120 @@
+/*
+    CoNG_Actions.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and takes defined action upon request
+    
+    V 0.0   20120515    Chris Janes     Original development
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    
+*/
+Function Actions(TriggerId, Action, ServerName, ServerSerial) 
+{
+    Log("Action Function - " + Action);
+    // Look up action
+    NGActionsDataType = "OutageTriggerActions";
+    NGActionsFilter = "ActionId = "  + Action;
+    Log ("NGActionsFilter = " + NGActionsFilter ) ;
+    CountOnly = False;
+    NGActions = GetByFilter(NGActionsDataType, NGActionsFilter, CountOnly);
+    NumNGActions  = Num;
+    
+    If (NumNGActions = 1)
+    {
+        Log("ActionString = " + NGActions[0].ActionString );
+        ActionArray = split(NGActions[0].ActionString, ",");
+        LenActionArray = Length (ActionArray);
+        Log("LenActionArray = " + LenActionArray);
+        CountActionArray = 0;
+        
+        while( CountActionArray < LenActionArray)
+        {
+            Log("ActionArray[CountActionArray] = " + ActionArray[CountActionArray]);
+            if(ActionArray[CountActionArray] = "ClearOT")
+            {
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("Trigger removed for " + EventId + "  " + ServerName + "  " + ServerSerial);
+            }
+            elseif(ActionArray[CountActionArray] = "SuppME")
+            {
+                CoNG_Lib.SuppressME(STATUS_NVP) ;
+                CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("Event Suppressed  " + ServerName + "  " + ServerSerial);
+            }
+            elseif(ActionArray[CountActionArray] = "SuppClearME")
+            {
+                CoNG_Lib.SuppressME(STATUS_NVP) ;
+                CoNG_Lib.SevEM(0, STATUS_NVP) ;
+                CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("Event Suppressed and Cleared " + ServerName + "  " + ServerSerial);
+            }
+            elseif(ActionArray[CountActionArray] = "RaiseTT")
+            {
+                CoNG_Lib.RaiseIR(STATUS_NVP) ;
+                CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("TT Raised " + ServerName + "  " + ServerSerial);
+            }            
+            elseif(ActionArray[CountActionArray] = "CreateSE")
+            {
+                CoNG_Lib.RaiseSE(ServerName, ServerSerial,0, STI_ARRAY, STI_ARRAY_Num) ;
+                CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("Synthetic Event  " + ServerName + "  " + ServerSerial);
+            }            
+            elseif(ActionArray[CountActionArray] = "CreateSETT")
+            {
+                CoNG_Lib.RaiseSE(ServerName, ServerSerial,1, STI_ARRAY, STI_ARRAY_Num) ;
+                CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+                CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+                Log("Synthetic Event Raised  " + ServerName + "  " + ServerSerial);
+            }
+            
+            CountActionArray = CountActionArray + 1 ;
+        }
+    }
+}
+Log("BehaviourStatus " + BehaviourStatus );
+Log("TriggerId " + TriggerId );
+Log("TriggerAction " + TriggerAction );
+Log("OTFailAction " + OTFailAction );
+ 
+if ( BehaviourStatus = 'Matched')
+{
+    // The trigger has matched it's requirements
+    STATUS_NVP = STATUS_NVP + "ImpactFlag:1020" ;
+    Actions(TriggerId, TriggerAction, ServerName, ServerSerial);
+    Log("Unlocking " + ServerSerial);
+    CoNG_Lib.UnLockAME(ServerName, ServerSerial);    
+}
+elseif ( BehaviourStatus = 'NotMatched')
+{
+    // The trigger has not matched it's requiremnets and has completed its allocate number of retrys
+    STATUS_NVP = STATUS_NVP + "ImpactFlag:9010" ;
+    Actions(TriggerId, "0", ServerName, ServerSerial);
+    Log("Unlocking " + ServerSerial);
+    CoNG_Lib.UnLockAME(ServerName, ServerSerial);
+}
+
+elseif ( BehaviourStatus = 'CoNG_Error TriggerParameter Not Found')
+{
+    STATUS_NVP = STATUS_NVP + "ImpactFlag:8010" ;
+    CoNG_Lib.UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY);
+    CoNG_Lib.RemoveTrigger(EventId,ServerName, ServerSerial) ;
+    Log("Event Failed Processing  " + ServerName + "  " + ServerSerial);
+    Log("Unlocking " + ServerSerial);
+    CoNG_Lib.UnLockAME(ServerName, ServerSerial);
+}
+elseif(BehaviourStatus = 'Processing')
+{
+ // The trigger has not matched it's requiremnets and will continue to retry
+Log("Unlocking " + ServerSerial);
+CoNG_Lib.UnLockAME(ServerName, ServerSerial);
+}
+else
+{
+    // This is an Eror condition
+    Log("The is an ERROR -  BehaviourStatus is " + BehaviourStatus);
+}
+ 

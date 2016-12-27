@@ -1,0 +1,82 @@
+/*
+    Trigger Tracking.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and contorls which triggers are processed
+    
+    V 0.0   20120515    Chris Janes     Original development
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    
+*/
+Log("Trigger Tracking Policy Starting"); 
+NowTime = GetDate(); 
+LoopCount = 0;
+// Get any entries from the Tracking table that are due to be processed
+TTDataType = "OutageTriggerTracking";
+TTFilter = NowTime + " > TriggerTime and EventLock = 0";
+Log ("TTFilter = " + TTFilter ) ;
+TTCountOnly = False;
+Triggers = GetByFilter(TTDataType, TTFilter, TTCountOnly);
+NumTriggers  = Num;
+Log ("NumTriggers = " + NumTriggers ) ;
+// If trhere are any to be processed
+While (NumTriggers  > 0) 
+{
+    // If this EventTrigger has reached it's retry count then remove from the table
+    if(Triggers[0].RetryCount == 0)
+    {
+        ServerName = Triggers[0].ServerName;
+        ServerSerial = Triggers[0].ServerSerial;
+        TriggerId = Triggers[0].TriggerId;
+        OTFailParameter = Triggers[0].OTFailParameter;
+        OTFailPolicy = Triggers[0].OTFailPolicy;
+        OTFailAction = Triggers[0].OTFailAction;
+        
+        // Delete Trigger
+        //Lock the AME
+        CoNG_Lib.LockAME(ServerName, ServerSerial);
+        
+        //Set Behaviour Status
+        BehaviourStatus = NotMatched;
+        
+        //Activate Fail Policy
+        Activate (NULL, OTFailPolicy)   ;     
+    }
+    else
+    {
+        //Lock the AME
+        ServerName = Triggers[0].ServerName;
+        ServerSerial = Triggers[0].ServerSerial;
+        TriggerId = Triggers[0].TriggerId;
+        TriggerParameter = Triggers[0].TriggerParameter;
+        TriggerPolicy = Triggers[0].TriggerPolicy;
+        TriggerAction = Triggers[0].TriggerAction;
+        
+        CoNG_Lib.LockAME(ServerName, ServerSerial);     
+        
+        //Update TriggerTime (Now + RetryTime) for all events with this SNSS
+        TriggerTimeFilter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial ;
+        TriggerTime = GetDate() + Triggers[0].RetryTime ;
+        TriggerTimeUpdateExpression = "TriggerTime = " + TriggerTime ;
+        BatchUpdate(TTDataType, TriggerTimeFilter, TriggerTimeUpdateExpression);
+        
+        //Update RetryCount = RetryCount -1 for this Trigger
+        TriggerCountFilter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial + "TriggerId = '" + TriggerId + "'";
+        TriggerCount = Triggers[0].RetryCount - 1;
+        Log("TriggerCount = " + TriggerCount);
+        TriggerCountUpdateExpression = "RetryCount = " + TriggerCount ;
+        BatchUpdate(TTDataType, TriggerTimeFilter, TriggerCountUpdateExpression);
+        
+        //Set Behaviour Status
+        BehaviourStatus = Processing;
+        //Activate Behavior (TriggerPolicy)
+        Activate (NULL, TriggerPolicy) ;       
+    }
+    
+    // Get data
+    Triggers = GetByFilter(TTDataType, TTFilter, TTCountOnly);
+    NumTriggers  = Num;
+    Log ("NumTriggers = " + NumTriggers ) ;
+    LoopCount = LoopCount + 1;
+    log("LoopCount = " + LoopCount);
+}
+Log("Trigger Tracking Policy Stopping\n\n\n"); 

@@ -1,0 +1,679 @@
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//    20120404  MMLite Code starts here (V1.3)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//    here is the code specific for CellStack
+//
+////////////////////////////////////////////////////////////////////////////////////////////////
+If (@Manager = 'CellStack' AND  EventContainer.Node like ".*SOLO[0-9]*-[0-9].*")
+{
+    //if(@Node = 'M06SOLO189-4B-01M1DW01L06-01')
+    //{
+        LogPrefix = "XXX ";
+    //}
+    Log(LogPrefix + " MMLITE SOLO Event");
+    // Specific Enrichment
+    
+    // Suffix AlarmClass and EventId with _SOLO
+    AlarmClass = EventContainer.AlarmClass;
+    
+    EventContainer.AlarmClass = EventContainer.AlarmClass + "_Solo";
+    EventContainer.EventId = EventContainer.EventId + "_Solo";
+    EnrichSOLOFilter = "AlarmClass like '^" + AlarmClass + "'";
+    Log(LogPrefix + " EnrichSOLOFilter = " + EnrichSOLOFilter);
+    EnrichSOLO = GetByFilter('OS_Parent_Child', EnrichSOLOFilter, false);
+    EnrichSOLONum = length(EnrichSOLO);
+    Log(LogPrefix + " EnrichSOLONum = " + EnrichSOLONum);
+    //  Data found in Lookup So this is a MMLIte event for processing
+    if (EnrichSOLONum > 0)
+    {
+        Log(LogPrefix + " AlarmClass found in PC table");
+        EventContainer.ActionRequired = 0;
+        EventContainer.ServiceAffecting = 2;
+        EventContainer.ResilienceAffecting = 2;
+        // The following 2 lines stop these events from being processed by ParentChild
+        //  comment them out if they are required to be processed by ParentChild
+        EventContainer.ParentChildFlag = 8;
+        EventContainer.ParentChildTime = 1;
+        EventContainer.Agent = "MMLITE";
+
+///////////////////////////////////////////////////////////////////////////////////////////
+//
+//  MMLite Solo Outage Triggers
+//
+///////////////////////////////////////////////////////////////////////////////////////////
+        if ( AlarmClass = 'csNmsTrapBoardNoVideoSync')
+        {
+            Log(LogPrefix + " MMLITE IAMS Outage Trigger 6");
+            /*
+                Requirement:
+                    BoardNoVideoSync alarm received from Cellstack element manager  
+                    If it has a End Device connected to it then
+                    ActionRequired = 1;
+                    ServiceAffecting = 1;
+                    INV_EndDevice_SystemType = SYSTEM_TYPE of end device
+                    STI_HA_Impact = STI_HA_IMPACT of end device
+                    STIRef = STI of End Device
+                    STINum = 1
+                    Reporter_STIRef ServerSerial and STIRef
+            */
+            // First where Node is in L1_Syaname
+            L1_CellStackerFilter = "L1_SYSNAME = '" + EventContainer.Node + "' and L1_IF_ID = 'VIDEO'";
+            Log(LogPrefix + " L1_CellStackerFilter = " + L1_CellStackerFilter);
+            L1_CellStacker = GetByFilter('Circee_Interface_Table', L1_CellStackerFilter, false);
+            L1_LenCellStacker = length(L1_CellStacker);
+            Log(LogPrefix + "L1_LenCellStacker = " + L1_LenCellStacker );
+            Solo_ED = {};
+            
+            Count_L1 = L1_LenCellStacker ;
+            While (Count_L1 > 0)
+            {
+                Count_L1 = Count_L1 -1 ;
+                log(LogPrefix + " L2_Sysname = " + L1_CellStacker[Count_L1].L2_SYSNAME );
+//      20120511    Change by Chris Janes
+//              log(LogPrefix + " L2_STI_ID = " + L1_CellStacker[Count_L1].L2_STI_ID );
+                log(LogPrefix + " L1_STI_ID = " + L1_CellStacker[Count_L1].L1_STI_ID );
+//              ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L2_STI_ID ;
+                ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L1_STI_ID ;
+//      20120511    End of Change
+                Solo_ED = Solo_ED + ED ;
+            }
+            // and now with Node is in L2_SYSNAME
+            L2_CellStackerFilter = "L2_SYSNAME = '" + EventContainer.Node + "'";
+            Log(LogPrefix + " L2_CellStackerFilter = " + L2_CellStackerFilter);
+            L2_CellStacker = GetByFilter('Circee_Interface_Table', L2_CellStackerFilter, false);
+            L2_LenCellStacker = length(L2_CellStacker);
+            Log(LogPrefix + "L2_LenCellStacker = " + L2_LenCellStacker );
+            
+            Count_L2 = L2_LenCellStacker ;
+            while (Count_L2 > 0)
+            {
+                Count_L2 = Count_L2 -1;
+                log(LogPrefix + " L1_Sysname = " + L2_CellStacker[Count_L2].L1_SYSNAME );
+                log(LogPrefix + " L1_STI_ID = " + L2_CellStacker[Count_L2].L1_STI_ID );
+                ED = L2_CellStacker[Count_L2].L1_SYSNAME + ":" + L2_CellStacker[Count_L2].L1_STI_ID ;
+                Solo_ED = Solo_ED + ED ;
+            }
+            Solo_ED_Num = Length(Solo_ED);
+            Log (LogPrefix + " Solo_ED_Num " + Solo_ED_Num );            
+            Solo_ED = Distinct(Solo_ED);
+            Solo_ED_Num = Length(Solo_ED);
+            Log (LogPrefix + "Dist Solo_ED_Num " + Solo_ED_Num );
+            
+            // loop through end devices
+            Count_ED = Solo_ED_Num;
+            while( Count_ED > 0)
+            {
+                Log(LogPrefix + " Looping through End Devices");
+                Count_ED = Count_ED -1;
+                // SPlit Syaname and STI_Ref from SoloED
+                Log(LogPrefix + "Solo_ED[" + Count_ED + "] = " + Solo_ED[Count_ED]);
+                ED_Split = Split(Solo_ED[Count_ED], ":");
+                
+                Log(LogPrefix + "ED_Sysname = " + ED_Split[0]);
+                Log(LogPrefix + "ED_STI_ID = " + ED_Split[1]);
+                // Pull back device infor from View Asset Netcool - we are only interested in cameras
+//              ED_SOLOFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV' and SERVICE_TYPE_ID in (‘8RC2’, ‘8RCO1’, ‘8RCO2’, ‘8RCO2D’, ‘10C2’, ‘10C2D’, ‘10CO1’, ‘10CO2’,  ‘10CO2D’) and EQUIP_TYPE = 'CAM'"; 
+//  20120519    Change by Chris Janes
+//                ED_SOLOFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV' and SERVICE_TYPE_ID in ('8RC2','8RCO1','8RCO2','8RCO2D','10C2','10C2D','10CO1','10CO2','10CO2D')";
+                ED_SOLOFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV'";
+// 20120519 End of Change
+                Log(LogPrefix + " ED_SOLOFilter = " + ED_SOLOFilter);
+                ED_SOLO = GetByFilter('Circee_Host_Table', ED_SOLOFilter, false);
+                ED_SOLONum = length(ED_SOLO);
+                Log(LogPrefix + " ED_SOLONum = " + ED_SOLONum);
+                if (ED_SOLONum = 1)
+                {
+//  20120519    Change by Chris Janes
+                    STIAssetFilter = "ASSET_ELECTRONIC_ADDRESS like '" + ED_SOLO[Count_ED].ASSET_ELECTRONIC_ADDRESS + "'  and ((STI_CATEGORY_ABBR in ('8')  and STI_TYPE_ABBR in ('RC2', 'RCO2', 'RCO2D')) or (STI_CATEGORY_ABBR in ('10')  and STI_TYPE_ABBR in ('C2', 'C2D', 'CO1')))";
+                    Log(LogPrefix + " STIAssetFilter = " + STIAssetFilter);
+                    STIAsset = GetByFilter('Circee_Asset_STI_Table', STIAssetFilter, false);
+                    STIAssetNum = length(STIAsset);
+                    Log(LogPrefix + " STIAssetNum = " + STIAssetNum);
+                    if(STIAssetNum > 0)
+                    {
+//  20120519    End of Change                        // there can only be one camera so this must be it
+                        Log(LogPrefix + " In Solo looP");
+                        // Lookup STI_HA_IMPACT and SYSTEM_TYPE frpm View End Device STI
+                        Log(LogPrefix + " ASSET_ELECTRONIC_ADDRESS = " + ED_SOLO[Count_ED].ASSET_ELECTRONIC_ADDRESS);
+
+//  20120522    QC1283  Change by Chris Janes
+//                      ED_SOLO_STI_Filter = "ELECTRONIC_ADDRESS like '" + ED_SOLO[Count_ED].ASSET_ELECTRONIC_ADDRESS + "'";
+                        ED_SOLO_STI_Filter = "ELECTRONIC_ADDRESS like '" + ED_SOLO[Count_ED].ASSET_ELECTRONIC_ADDRESS + "' AND STI_ID = " + ED_Split[1];
+//  20120512    End of Change                        
+                        Log(LogPrefix + " ED_SOLO_STI_Filter = " + ED_SOLO_STI_Filter );
+                        ED_SOLO_STI = GetByFilter('Circee_End_Device_STI_Table', ED_SOLO_STI_Filter, false);
+                        NumED_SOLO_STI = length(ED_SOLO_STI);
+                        log(LogPrefix + " NumED_SOLO_STI = " + NumED_SOLO_STI );
+                        if(NumED_SOLO_STI > 0)
+                        {
+                            Log(LogPrefix + " INV_EndDevice_SystemType = " + ED_SOLO_STI[0].SYSTEM_TYPE);
+                            Log(LogPrefix + " STI_HA_Impact = " + ED_SOLO_STI[0].STI_HA_IMPACT);
+                            Log(LogPrefix + " STIRef = " + ED_Split[1]);
+                            EventContainer.INV_EndDevice_SystemType = ED_SOLO_STI[0].SYSTEM_TYPE;
+                            EventContainer.STI_HA_Impact = ED_SOLO_STI[0].STI_HA_IMPACT;
+                            EventContainer.STIRef = ED_Split[1];
+                            EventContainer.STINum = 1;
+                            EventContainer.ActionRequired = 1;
+                            EventContainer.ServiceAffecting = 1;
+                            EventContainer.Severity = 5;
+                            EventContainer.RemoteNode = ED_Sysname;
+                            EventContainer.AssetElectronicAddress = ED_SOLO[Count_ED].ASSET_ELECTRONIC_ADDRESS;
+                            Log(LogPrefix + "Event Container updated ");
+                            // Write STI info to Reporter_STI_Ref
+                            NewReporter_STI = NewObject();
+                            NewReporter_STI.SERVER_SERIAL = EventContainer.ServerSerial;
+                            NewReporter_STI.SERVER_NAME = EventContainer.ServerName;
+//  20120522    defect QC1285   Change by Chris Janes of Innovise
+//                          NewReporter_STI.STI_ID = EventContainer.ED_STI_ID;
+                            NewReporter_STI.STI_ID = ED_Split[1];
+//  20120522    End of Change
+                            AddDataItem("Reporter_STI_Ref", NewReporter_STI);
+                            Log(LogPrefix + " YYY1 Reporter_STI_REF updated " + ED_Split[1]);
+                        }
+                        else
+                        {
+                            Log(LogPrefix + " No Data found for End Device in Circee_End_Device_STI_Table");
+                        }
+//  20120519    Change by Chris Janes
+                    }
+//  20120519    End of Cange
+                }
+            }
+        }
+        elseif(AlarmClass = 'csNmsTrapLossOfConnection')
+        {
+            Log(LogPrefix + " MMLITE IAMS Outage Trigger 5");
+            /*
+                Requirements:
+                    csNmsTrapLossOfConnection alarm received from Cellstack element manager and a connected device 
+                    is either a camera or an end device
+                    Automated Trouble Ticket generated in APM enriched with detail of all the STI affected. If there
+                    is no effected STI then no TT is raised
+                        ActionRequired = 1;
+                        ServiceAffecting = 1;
+                        INV_EndDevice_SystemType = SYSTEM_TYPE of end device - if morethan 1 ED then record if any are HSM
+                        and if they are put HSM 
+                        STI_HA_Impact = STI_HA_IMPACT of Solo
+                        STIRef = Concatination of STI of Qualifying End Device
+                        STINum = Count of STI of qualifying ED
+                        Reporter_STIRef ServerSerial and STIRef
+            */
+            
+            //Get all the possible end devices  and put into array Solo_ED
+            Solo_ED = {};
+            // First where Node is in L1_Syaname
+            L1_CellStackerFilter = "L1_SYSNAME = '" + EventContainer.Node + "'";
+            Log(LogPrefix + " L1_CellStackerFilter = " + L1_CellStackerFilter);
+            L1_CellStacker = GetByFilter('Circee_Interface_Table', L1_CellStackerFilter, false);
+            L1_LenCellStacker = length(L1_CellStacker);
+            Log("L1_LenCellStacker = " + L1_LenCellStacker );
+            Count_L1 = L1_LenCellStacker;
+            While (Count_L1 > 0)
+            {
+                Count_L1 = Count_L1 -1;
+                log(LogPrefix + " L2_Sysname = " + L1_CellStacker[Count_L1].L2_SYSNAME );
+//      20120511    Change by Chris Janes
+//              log(LogPrefix + " L2_STI_ID = " + L1_CellStacker[Count_L1].L2_STI_ID );
+                log(LogPrefix + " L2_STI_ID = " + L1_CellStacker[Count_L1].L1_STI_ID );
+//              ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L2_STI_ID ;
+                ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L1_STI_ID ;
+//      20120511    End of Change
+                Solo_ED = Solo_ED + ED ;
+            }
+            
+            
+           // and now with Node is in L2_SYSNAME
+            L2_CellStackerFilter = "L2_SYSNAME = '" + EventContainer.Node + "'";
+            Log(LogPrefix + " L2_CellStackerFilter = " + L2_CellStackerFilter);
+            L2_CellStacker = GetByFilter('Circee_Interface_Table', L2_CellStackerFilter, false);
+            L2_LenCellStacker = length(L2_CellStacker);
+            Log("L2_LenCellStacker = " + L2_LenCellStacker );
+            Count_L2 = L2_LenCellStacker;
+            While (Count_L2 > 0)
+            {
+                Count_L2 = Count_L2 -1;
+                log(LogPrefix + " L1_Sysname = " + L2_CellStacker[Count_L2].L1_SYSNAME );
+                log(LogPrefix + " L1_STI_ID = " + L2_CellStacker[Count_L2].L1_STI_ID );
+                ED = L2_CellStacker[Count_L2].L1_SYSNAME + ":" + L2_CellStacker[Count_L2].L1_STI_ID ;
+                Solo_ED = Solo_ED + ED ;
+            }
+            // Solo_ED now has a list of possible EndDevices
+            // Get rid of duplicates
+            
+            Solo_ED_Num = Length(Solo_ED);
+            Log (LogPrefix + " Solo_ED_Num " + Solo_ED_Num );            
+            Solo_ED = Distinct(Solo_ED);
+            Solo_ED_Num = Length(Solo_ED);
+            Log (LogPrefix + "Dist Solo_ED_Num " + Solo_ED_Num );
+            
+            EventContainer.STIRef = "";
+            EventContainer.STINum = 0;
+            EventContainer.INV_EndDevice_SystemType = "";
+            EventContainer.STI_HA_Impact = 0;
+            
+            //Now work through the list and see if these meet requirements of Category_ABBR = EDV and SERVICE_TYPE_ID in ('8RH', '8RHD')"
+            CountED = Solo_ED_Num;
+            while (CountED >0)
+            {
+                Log(LogPrefix + "  Looping through the ed");
+                CountED = CountED -1;
+                // SPlit Syaname and STI_Ref from SoloED
+                Log(LogPrefix + "Solo_ED[" + CountED + "] = " + Solo_ED[CountED]);
+                ED_Split = Split(Solo_ED[CountED], ":");
+                // Pull back device infor from View Asset Netcool
+//  20120519    Change by Chris Janes of Innovise
+//                ED_SOLOFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV' and SERVICE_TYPE_ID in ('8RC2','8RCO1','8RCO2','8RCO2D','10C2','10C2D','10CO1','10CO2','10CO2D')"; 
+                ED_SOLOFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV' "; 
+// 20120519     End of Change
+                Log(LogPrefix + " ED_SOLOFilter = " + ED_SOLOFilter);
+                ED_SOLO = GetByFilter('Circee_Host_Table', ED_SOLOFilter, false);
+                ED_SOLONum = length(ED_SOLO);
+                Log(LogPrefix + " ED_SOLONum = " + ED_SOLONum);
+                if (ED_SOLONum > 0)
+                {
+//  Change by Chris Janes of Innovise
+                    Log(LogPrefix + "  This is an end device");
+                    STIAssetFilter = "ASSET_ELECTRONIC_ADDRESS like '" + ED_SOLO[0].ASSET_ELECTRONIC_ADDRESS + "'  and ((STI_CATEGORY_ABBR in ('8')  and STI_TYPE_ABBR in ('RC2', 'RCO2', 'RCO2D')) or (STI_CATEGORY_ABBR in ('10')  and STI_TYPE_ABBR in ('C2', 'C2D', 'CO1')))";
+                    Log(LogPrefix + " STIAssetFilter = " + STIAssetFilter);
+                    STIAsset = GetByFilter('Circee_Asset_STI_Table', STIAssetFilter, false);
+                    STIAssetNum = length(STIAsset);
+                    Log(LogPrefix + " STIAssetNum = " + STIAssetNum);
+                    if(STIAssetNum > 0)
+                    {
+//  20120519    End of Change
+                        // This is a Qualifying End Device
+                        // Lookup STI_HA_IMPACT and SYSTEM_TYPE frpm View End Device STI
+                        Log(LogPrefix + " ASSET_ELECTRONIC_ADDRESS = " + ED_SOLO[0].ASSET_ELECTRONIC_ADDRESS);
+                        ED_SOLO_STI_Filter = "ELECTRONIC_ADDRESS like '" + ED_SOLO[0].ASSET_ELECTRONIC_ADDRESS + "'";
+                        Log(LogPrefix + " ED_SOLO_STI_Filter = " + ED_SOLO_STI_Filter );
+                        ED_SOLO_STI = GetByFilter('Circee_End_Device_STI_Table', ED_SOLO_STI_Filter, false);
+                        NumED_SOLO_STI = length(ED_SOLO_STI);
+                        log(LogPrefix + " NumED_SOLO_STI = " + NumED_SOLO_STI );
+//  20120522    QC1283  Change by Chris Janes
+//                        if(NumED_SOLO_STI > 0)
+                        Count_ED_SOLO_STI = NumED_SOLO_STI;
+                        while ( Count_ED_SOLO_STI > 0)
+//  20120522    End of Change
+                        {
+//  20120522    QC1283  Change by Chris Janes
+                            Count_ED_SOLO_STI = Count_ED_SOLO_STI -1;
+                            // there is end device data
+//                          Log(LogPrefix + " INV_EndDevice_SystemType = " + ED_SOLO_STI[0].SYSTEM_TYPE);
+//                          Log(LogPrefix + " STI_HA_Impact = " + ED_SOLO_STI[0].STI_HA_IMPACT);
+                            Log(LogPrefix + " INV_EndDevice_SystemType = " + ED_SOLO_STI[Count_ED_SOLO_STI].SYSTEM_TYPE);
+                            Log(LogPrefix + " STI_HA_Impact = " + ED_SOLO_STI[Count_ED_SOLO_STI].STI_HA_IMPACT);
+//  20120522    QC 1284 Change by CHris Janes
+//                          if(ED_SOLO_STI[0].SYSTEM_TYPE = 'HSM')
+//                          {
+//                              Log(LogPrefix + " Update of INV_EndDevice_SystemType");
+//                              EventContainer.INV_EndDevice_SystemType = 'HSM';
+//                          }
+//  20120522    QC 1284 End of Change
+                            Log(LogPrefix + " Update of INV_EndDevice_SystemType");
+//                          EventContainer.INV_EndDevice_SystemType = ED_SOLO_STI[0].SYSTEM_TYPE;
+                            EventContainer.INV_EndDevice_SystemType = ED_SOLO_STI[0].SYSTEM_TYPE;
+                              
+//                          if(ED_SOLO_STI[0].STI_HA_IMPACT > EventContainer.STI_HA_Impact)
+                            if(ED_SOLO_STI[Count_ED_SOLO_STI].STI_HA_IMPACT > EventContainer.STI_HA_Impact)
+                            {
+                                Log(LogPrefix + " Update of STI_HA_Impact");
+//                                EventContainer.STI_HA_Impact = ED_SOLO_STI[0].STI_HA_IMPACT;
+                                EventContainer.STI_HA_Impact = ED_SOLO_STI[Count_ED_SOLO_STI].STI_HA_IMPACT;
+//  20120522    QC1283  Change by Chris Janes
+                            }
+                        }
+                        
+                        EventContainer.STIRef = EventContainer.STIRef + " " + ED_Split[1];
+                        EventContainer.STINum = EventContainer.STINum + 1;
+                        // We Set the following everytime we have a qualifying 
+                        EventContainer.ActionRequired = 1;
+                        EventContainer.ServiceAffecting = 1;
+                        EventContainer.Severity = 5;
+                        Log(LogPrefix + "STIRef = " + EventContainer.STIRef);
+                        Log(LogPrefix + "STINum = " + EventContainer.STINum);
+                        // Write STI info to Reporter_STI_Ref for this ED
+                        NewReporter_STI = NewObject();
+                        NewReporter_STI.SERVER_SERIAL = EventContainer.ServerSerial;
+                        NewReporter_STI.SERVER_NAME = EventContainer.ServerName;
+                        NewReporter_STI.STI_ID = ED_Split[1];
+                        AddDataItem("Reporter_STI_Ref", NewReporter_STI);
+                        Log(LogPrefix + " YYY2 Reporter_STI_REF updated " + ED_Split[1]);
+//  20120519    Change by Chris Janes of Innovise
+                    }
+//  20120519 End of Change
+                }
+                else
+                {
+                    Log(LogPrefix + " This is not an ED 001");
+                }
+            }
+            
+        }
+        else
+        {
+            Log(LogPrefix + " No outage trigger");
+        }
+    }
+    // No data found in Lookup so this is not a MMLite event and should NOT be processed
+    else
+    {
+        Log(LogPrefix + " AlarmClass Not found in PC table");
+    }
+    // SYSTEM_TYPE
+    log(LogPrefix + " xxx ElectronicAddress = " + EventContainer.AssetElectronicAddress);
+} 
+// End of MMLite Solo
+//ReturnEvent(EventContainer);
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//    here is the code specific for 7210
+//
+////////////////////////////////////////////////////////////////////////////////////////////////
+if( EventContainer.Node like ".*SAS[MD][0-9]*-[0-9].*") // to match M99SASM123/45h.01M1 
+{
+    
+    //if(@Node = "M06SASM188-2B-01M1")
+    //{
+        LogPrefix = "XXX ";
+    //}  
+    Log("XXX LogPrefix done" + LogPrefix );
+    // Discover which type of 7210 we have
+    if( EventContainer.Node like ".*SASM.*")
+    {
+        Type7210 = "SASM";
+    }
+    elseif( EventContainer.Node like ".*SASD.*")
+    {
+        Type7210 = "SASD";
+    }
+    else
+    {
+        Type7210 = "OTHER";
+    }
+    Log(LogPrefix + " SAS Found");
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    //
+    //  MMLite 7210 Enrichment
+    //
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    
+    // Update event so it is a 7210 rather than a 7750
+    AlarmClass = EventContainer.AlarmClass;
+    NewEventId = EventContainer.EventId + "_" + Type7210;
+    NewAlarmClass = EventContainer.AlarmClass + "_" + Type7210;
+    
+    EventContainer.EventId = NewEventId;
+    EventContainer.AlarmClass = NewAlarmClass;
+    
+    // Now we enrich with the correct data for 7210 events
+    // This is looked up from objectserver table custom.Enrich7210 using fields SAS and EventID as key
+    Enrich7210Filter = "AlarmClass like '^" + EventContainer.AlarmClass + "'";
+    Log(LogPrefix + " Enrich7210Filter = " + Enrich7210Filter);
+    Enrich7210 = GetByFilter('OS_Parent_Child', Enrich7210Filter, false);
+    Enrich7210Num = length(Enrich7210);
+    Log(LogPrefix + " Enrich7210Num = " + Enrich7210Num);
+    //  Data found in Lookup So this is a MMLIte event for processing
+    if (Enrich7210Num = 1)
+    {
+        Log(LogPrefix + " AlarmClass found in PC Table");
+        EventContainer.ActionRequired = 0;
+        EventContainer.ServiceAffecting = 2;
+        EventContainer.ResilienceAffecting = 2;
+        EventContainer.ParentChildFlag = 8;
+        EventContainer.ParentChildTime = 1;
+        EventContainer.Agent = "MMLITE";
+    // Enrichment Complete
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    //
+    //  MMLite Outage Triggers
+    //
+    ///////////////////////////////////////////////////////////////////////////////////////////
+        Log(LogPrefix + " Outage Trigger " + AlarmClass);    
+        //Outage Trigger MMLite1 MMLite2 MMLite3
+        if (AlarmClass = 'LinkDown'  || AlarmClass = 'EquipmentDown' || AlarmClass = 'ContainingEquipmentOperationallyDown')
+        {
+            /*
+                Requirement:When a qualifying alarm received from a port that has a ST8RH or ST8RDH end device directly 
+                attached to it an Automated Trouble Ticket generated in APM enriched with detail of all STIs affected 
+                Is this an end device?
+                if so
+                    Set SA and AR =1 (Raise a ticket
+                    STIRef and STINum set with the STI of the End Device (L1_STI_ID for givrn sysname/port from interfaces table)   
+                else
+                    do nothing      
+            */
+            Log(LogPrefix + " Outage Triggers 1, 2 and 3 ");
+            // Get Connected devices from Interfaces table
+            // Where Sysname is in L1
+            L1_7210Filter = "L1_SYSNAME = '" + EventContainer.Node + "' AND L1_IF_ID  = '" + EventContainer.PhysicalCard + "'";
+            Log(LogPrefix + " L1_7210Filter = " + L1_7210Filter);
+            L1_7210 = GetByFilter('Circee_Interface_Table', L1_7210Filter, false);
+            L1_7210Num = length(L1_7210);
+            Log(LogPrefix + " L1_7210Num = " + L1_7210Num);
+            if (L1_7210Num = 1)
+            {
+                ED_Sysname = L1_7210[0].L2_SYSNAME;
+//      20120511    Change by Chris Janes
+//              ED_STI_ID = L1_7210[0].L2_STI_ID;
+                ED_STI_ID = L1_7210[0].L1_STI_ID;
+//      20120511 End of Change
+                log(LogPrefix + " Host found as L1" + Count_L1);
+                log(LogPrefix + " L2_Sysname = " + ED_Sysname );
+                log(LogPrefix + " L2_STI_ID = " + ED_STI_ID );
+            }
+            else
+            {
+                // Where Sysname is in L2
+                L2_7210Filter = "L2_SYSNAME = '" + EventContainer.Node + "' AND L2_IF_ID  = '" + EventContainer.PhysicalCard + "'";
+                Log(LogPrefix + " L2_7210Filter = " + L2_7210Filter);
+                L2_7210 = GetByFilter('Circee_Interface_Table', L2_7210Filter, false);
+                L2_7210Num = length(L2_7210);
+                Log(LogPrefix + " L2_7210Num = " + L2_7210Num);
+                if (L2_7210Num = 1)
+                {
+                    ED_Sysname = L2_7210[0].L1_SYSNAME;
+                    ED_STI_ID = L2_7210[1].L1_STI_ID;               
+                    log(LogPrefix + " Count_L2 = " + Count_L2);
+                    log(LogPrefix + " L2_Sysname = " + ED_Sysname );
+                    log(LogPrefix + " L1_STI_ID = " + ED_STI_ID );
+                }  
+                else
+                {
+                    Log(LogPrefix + " Host Port not found in Interfaces Table");
+                }
+            }
+            //Lookup the remote port in Cirsee if it is Category_ABBR = EDV and ServiceType in 
+//  20120519    Change by Chris Janes of Innovise
+//            ED_7210Filter = "SYSNAME = '" + ED_Sysname + "'and CATEGORY_ABBR = 'EDV' and SERVICE_TYPE_ID in ('8RH', '8RDH')";
+            ED_7210Filter = "SYSNAME = '" + ED_Sysname + "'and CATEGORY_ABBR = 'EDV'";
+//  20120519    End of Change
+            Log(LogPrefix + " ED_7210Filter = " + ED_7210Filter);
+            ED_7210 = GetByFilter('Circee_Host_Table', ED_7210Filter, false);
+            ED_7210Num = length(ED_7210);
+            Log(LogPrefix + " ED_7210Num = " + ED_7210Num);
+            
+            if (ED_7210Num =1)
+            {
+//  Change by Chris Janes of Innovise
+                STIAssetFilter = "ASSET_ELECTRONIC_ADDRESS like '" + ED_7210[0].ASSET_ELECTRONIC_ADDRESS + "'  and (STI_CATEGORY_ABBR in ('8')  and STI_TYPE_ABBR in ('RH', 'RDH'))";
+                Log(LogPrefix + " STIAssetFilter = " + STIAssetFilter);
+                STIAsset = GetByFilter('Circee_Asset_STI_Table', STIAssetFilter, false);
+                STIAssetNum = length(STIAsset);
+                Log(LogPrefix + " STIAssetNum = " + STIAssetNum);
+                if(STIAssetNum > 0)
+                {
+//  20120519    End of Change                
+                
+                    ED_SAS_STI_Filter = "ELECTRONIC_ADDRESS like '" + ED_7210[0].ASSET_ELECTRONIC_ADDRESS + "'";
+                    Log(LogPrefix + " ED_SAS_STI_Filter = " + ED_SAS_STI_Filter );
+                    ED_SAS_STI = GetByFilter('Circee_End_Device_STI_Table', ED_SAS_STI_Filter, false);
+                    NumED_SAS_STI = length(ED_SAS_STI);
+                    log(LogPrefix + " NumED_SAS_STI = " + NumED_SAS_STI );
+                    log(LogPrefix + " STI_HA_IMPACT = " + ED_SAS_STI[0].STI_HA_IMPACT);
+                    log(LogPrefix + " SYSTEM_TYPE = " + ED_SAS_STI[0].SYSTEM_TYPE);
+                    if(ED_7210[0].CATEGORY_ABBR = 'EDV')
+                    {
+                        Log(LogPrefix + " This is an End Device");
+                        EventContainer.STI_HA_Impact = ED_SAS_STI[0].STI_HA_IMPACT;
+                        EventContainer.STIRef = ED_STI_ID;
+                        EventContainer.STINum = 1;
+                        EventContainer.RemoteNode = ED_Sysname;
+                        EventContainer.ActionRequired = 1;
+                        EventContainer.ServiceAffecting = 1;
+                        EventContainer.STIRef =  ED_STI_ID ;
+                        EventContainer.AssetElectronicAddress = ED_7210[0].ASSET_ELECTRONIC_ADDRESS;
+                        // Write STI info to Reporter_STI_Ref
+                        NewReporter_STI = NewObject();
+                        NewReporter_STI.SERVER_SERIAL = EventContainer.ServerSerial;
+                        NewReporter_STI.SERVER_NAME = EventContainer.ServerName;
+                        NewReporter_STI.STI_ID = ED_STI_ID;
+                        AddDataItem("Reporter_STI_Ref", NewReporter_STI);
+                        Log(LogPrefix + " YYY3 Reporter_STI_REF updated " + ED_STI_ID);
+
+                    }
+//  20120519    Change by Chris Janes of Innovise
+                }
+//  20120519 End of Change                
+            }
+        }
+        // MMLite Outage Trigger 4
+        elseif (AlarmClass = 'ReachabilityProblem')
+        {
+            Log("ReachabilityProblem");//ReachabilityProblem
+            /*
+            
+            ReachabilityProblem alarm received from SAM 5620 Element Manager for a 7210SAS-M or a 7210SAS-D. 
+            One or more of the remote links is an ST8RH or ST8RDH end device.output
+            Automated Trouble Ticket generated in APM enriched with details of all affected STIs from the 
+            end devices directly connected to the 7210 ; 
+                ActionRequired = 1;
+                ServiceAffecting = 1;
+                INV_EndDevice_SystemType = SYSTEM_TYPE of end device - if morethan 1 ED then record if any are HSM
+                and if they are put HSM 
+                STI_HA_Impact = STI_HA_IMPACT of 7210
+                STIRef = Concatination of STI of Qualifying End Device
+                STINum = Count of STI of qualifying ED
+                Reporter_STIRef ServerSerial ServerName and STIRef
+            */
+            
+            //Get all the possible end devices  and put into array SAS_ED
+            SAS_ED = {};
+            // First where Node is in L1_Syaname
+            L1_CellStackerFilter = "L1_SYSNAME = '" + EventContainer.Node + "'";
+            Log(LogPrefix + " L1_CellStackerFilter = " + L1_CellStackerFilter);
+            L1_CellStacker = GetByFilter('Circee_Interface_Table', L1_CellStackerFilter, false);
+            L1_LenCellStacker = length(L1_CellStacker);
+            Log("L1_LenCellStacker = " + L1_LenCellStacker );
+            Count_L1 = L1_LenCellStacker;
+            While (Count_L1 > 0)
+            {
+                Count_L1 = Count_L1 -1;
+                log(LogPrefix + " L2_Sysname = " + L1_CellStacker[Count_L1].L2_SYSNAME );
+//      20120511    Change by Chris Janes
+//              log(LogPrefix + " L2_STI_ID = " + L1_CellStacker[Count_L1].L2_STI_ID );
+//              ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L2_STI_ID ;
+                log(LogPrefix + " L1_STI_ID = " + L1_CellStacker[Count_L1].L1_STI_ID );
+//              ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L1_STI_ID ;
+                ED = L1_CellStacker[Count_L1].L2_SYSNAME + ":" + L1_CellStacker[Count_L1].L1_STI_ID ;
+                SAS_ED = SAS_ED + ED ;
+            }
+            
+            
+           // and now with Node is in L2_SYSNAME
+            L2_CellStackerFilter = "L2_SYSNAME = '" + EventContainer.Node + "'";
+            Log(LogPrefix + " L2_CellStackerFilter = " + L2_CellStackerFilter);
+            L2_CellStacker = GetByFilter('Circee_Interface_Table', L2_CellStackerFilter, false);
+            L2_LenCellStacker = length(L2_CellStacker);
+            Log("L2_LenCellStacker = " + L2_LenCellStacker );
+            Count_L2 = L2_LenCellStacker;
+            While (Count_L2 > 0)
+            {
+                Count_L2 = Count_L2 -1;
+                log(LogPrefix + " L1_Sysname = " + L2_CellStacker[Count_L2].L1_SYSNAME );
+                log(LogPrefix + " L1_STI_ID = " + L2_CellStacker[Count_L2].L1_STI_ID );
+                ED = L2_CellStacker[Count_L2].L1_SYSNAME + ":" + L2_CellStacker[Count_L2].L1_STI_ID ;
+                SAS_ED = SAS_ED + ED ;
+            }
+            // SAS_ED now has a list of possible EndDevices
+            // Get rid of duplicates
+            SAS_ED = Distinct(SAS_ED);
+            SAS_ED_Num = Length(SAS_ED);
+            Log (LogPrefix + " SAS_ED_Num = " + SAS_ED_Num );
+            
+            // Set Values so we know we are starting from a good place
+            EventContainer.STIRef = "";
+            EventContainer.STINum = 0;
+            
+            //Now work through the list and see if these meet requirements of Category_ABBR = EDV and SERVICE_TYPE_ID in ('8RH', '8RHD')"
+            CountED = SAS_ED_Num;
+            while (CountED >0)
+            {
+                CountED = CountED -1;
+                // SPlit Syaname and STI_Ref from SASED
+                ED_Split = Split(SAS_ED[CountED], ":");
+                // Pull back device infor from View Asset Netcool
+                ED_SASFilter = "SYSNAME = '" + ED_Split[0] + "' and CATEGORY_ABBR = 'EDV' and SERVICE_TYPE_ID in ('8RH', '8RDH')"; 
+                Log(LogPrefix + " ED_SASFilter = " + ED_SASFilter);
+                ED_SAS = GetByFilter('Circee_Host_Table', ED_SASFilter, false);
+                ED_SASNum = length(ED_SAS);
+                Log(LogPrefix + " ED_SASNum = " + ED_SASNum);
+                if (ED_SASNum = 1)
+                {
+//  Change by Chris Janes of Innovise
+                    STIAssetFilter = "ASSET_ELECTRONIC_ADDRESS like '" + ED_SAS[0].ASSET_ELECTRONIC_ADDRESS + "'  and (STI_CATEGORY_ABBR in ('8')  and STI_TYPE_ABBR in ('RH', 'RDH'))";
+                    Log(LogPrefix + " STIAssetFilter = " + STIAssetFilter);
+                    STIAsset = GetByFilter('Circee_Asset_STI_Table', STIAssetFilter, false);
+                    STIAssetNum = length(STIAsset);
+                    Log(LogPrefix + " STIAssetNum = " + STIAssetNum);
+                    if(STIAssetNum > 0)
+                    {
+    //  20120519    End of Change                     // This is a Qualifying End Device
+                        EventContainer.STIRef = EventContainer.STIRef + " " + ED_Split[1];
+                        EventContainer.STINum = EventContainer.STINum + 1;
+                        // We Set the following everytime we have a qualifying 
+                        EventContainer.ActionRequired = 1;
+                        EventContainer.ServiceAffecting = 1;
+//    20120519  Addition By Chris Janes of Innovise    Defect 1281                  
+                        if(STIAsset[0].STI_HA_IMPACT > EventContainer.STI_HA_Impact)
+                        {
+                            Log(LogPrefix + " Update of STI_HA_Impact");
+                            EventContainer.STI_HA_Impact = STIAsset[0].STI_HA_IMPACT;
+                        }
+//      20120519    End of addition
+                        // Write STI info to Reporter_STI_Ref for this ED
+                        NewReporter_STI = NewObject();
+                        NewReporter_STI.SERVER_SERIAL = EventContainer.ServerSerial;
+                        NewReporter_STI.SERVER_NAME = EventContainer.ServerName;
+                        NewReporter_STI.STI_ID = ED_Split[1];
+                        AddDataItem("Reporter_STI_Ref", NewReporter_STI);
+                            Log(LogPrefix + " YYY4 Reporter_STI_REF updated " + ED_Split[1] );
+
+                    }
+//  20120519    Change by Chris Janes of Innovise
+                }
+//  20120519 End of Change
+            }
+        }
+        else
+        {
+            Log(LogPrefix + " No outage trigger");
+        }
+    }
+    // No data found in Lookup so this is not a MMLite event and should NOT be processed
+    else
+    {
+        Log(LogPrefix + " AlarmClass not in PC Table");
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//    20120404  End of MMLite Code
+//
+////////////////////////////////////////////////////////////////////////////////////////////////

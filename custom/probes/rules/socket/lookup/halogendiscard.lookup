@@ -1,0 +1,13 @@
+###########################################################################
+#
+#     HalogenDiscard.Lookup
+#
+#     Created by HalogenLookup.pl
+#     Date Created - 
+#
+###########################################################################
+
+table HalogenDiscard_lookup = {
+  { "DUMMY_ENTRY", "1"}
+}
+default = {"0"}

@@ -1,0 +1,55 @@
+/*
+    NG_Beh_IPT.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting NG_Beh_IPT");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+
+
+if(TriggerParameter = "tr485LinkDown")
+{
+    // Get Event Info
+    // Get STI affected
+    //      lookup Asset_ID from ViewAssetNetcool
+    //      Look up all STI where Asset_ID from above
+    //      Distict the above list
+// the next bit to be a action    
+    // Pop STI_Ref and STI Num
+    //      STI_Num = Length STI Array
+    //      STI_Ref concat of STI Array
+    // Pop Reporter_STI table
+    //      for each STI in STI Array
+    //          insert into Reporter STI    SN, SS, STI
+    // Set ImpactFlag
+    
+    
+    // Job Done
+}
+else
+{
+    //Epic Fail
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Log("Starting NG_Beh_IPT");

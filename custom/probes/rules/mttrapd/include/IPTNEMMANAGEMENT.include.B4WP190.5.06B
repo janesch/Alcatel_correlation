@@ -1,0 +1,696 @@
+######
+# IPTNEMMANAGEMENT(sslorg) include file
+# Based on the IPTNEMManagement MIB Revision 201202161523Z
+# V 0.00	20120213	Niranjan Bala
+# V 0.01	20120227	Niranjan Bala
+# V 0.02	20120228	Niranjan Bala
+# V 0.03	20120304	Niranjan Bala
+# V 0.04	20120305	Niranjan Bala
+# V 0.05	20120306	Niranjan Bala
+# V 0.06	20120307	Niranjan Bala
+# V 0.07	20120308	Niranjan Bala
+######
+
+case ".1.3.6.1.4.1.36974.2.10.1"|".1.3.6.1.4.1.36974.2.10.2"|".1.3.6.1.4.1.36974.2.10.3"|".1.3.6.1.4.1.36974.2.10.4"|".1.3.6.1.4.1.36974.2.10.5"|".1.3.6.1.4.1.36974.2.10.6"|".1.3.6.1.4.1.36974.2.10.7"|".1.3.6.1.4.1.36974.2.10.8"|".1.3.6.1.4.1.36974.2.10.9"|".1.3.6.1.4.1.36974.2.10.10"|".1.3.6.1.4.1.36974.2.10.11"|".1.3.6.1.4.1.36974.2.10.12"|".1.3.6.1.4.1.36974.2.10.13"|".1.3.6.1.4.1.36974.2.10.14":
+
+#	All the IPT Enterprise specific variables are initialized in the below secion
+	$trapOID = $1				# Object Identifier of Trap
+	$sequenceNumber = $2		# Trap Sequence Number
+	$geogAddr = $3				# Geographic Address of Managed Object from IPTNEM		
+	$additionalInfo = $4		# Additional Information Relating to the Event
+	$managedObject = $5			# Network Object Generating the Alarm
+	$probableCause = $6			# Probable Cause of Event as Assigned by IPTNEM
+	$remarks = $7				# IPTNEM Operator Remarks
+	$clearanceSource = $8		# Operator Responsible for Manual Clear in IPTNEM
+	$acknowledgementSource = $9	# Acknowledging Operator in IPTNEM
+	$clearanceTime = $10		# Time of Event Clearance
+	$acknowledgementTime = $11	# Time of Event Acknowledgement in IPTNEM
+#	eventTimestamp and receiptTimestamp are in hex
+	$eventTimestamp = $12_hex	# Timestamp of Event Occurrence
+	$receiptTimestamp = $13_hex	# Timestamp of Event Receipt by IPTNEM
+	$manualClear = $14			# Manual Clearance State from IPTNEM
+	$cleared = $15				# Clearance State from IPTNEM
+	$acknowledged = $16			# Event Acknowledged State from IPTNEM
+	$severity = $17				# Severity of Event as Assigned by IPTNEM
+	$reasonCode = $18			# Alarm Reason Code
+
+#	Generic Fields
+#	@Agent = "IPTNEMMANAGEMENT-MIB"
+	@Manager = "IPTNEM"
+			
+	#	MANAGED OBJECT TYPE = IPT - Set default values
+	$sysName = $managedObject
+	@AlertKey = $managedObject
+	@AlarmCause = $probableCause
+
+	#	20120223	Chris Janes 	Setting IPTNEM_array["Primary"]
+	Switch(IPTNEM_array["Primary"])
+	{
+		case "1" | "0":
+		default:
+			IPTNEM_array["Primary"] = 0
+	}
+	Switch(IPTNEM_array["Backup"])
+	{
+		case "1" | "0":
+		default:
+			IPTNEM_array["Backup"] = 0
+	}
+	#	20120223	End of Change
+			
+			
+switch($enterprise){
+	case ".1.3.6.1.4.1.36974.2.10.1": # - categoryBoot
+		@AlarmType = "Boot"
+		switch($specific-trap) {
+			case "1": ### - trBootSuccess
+				# Initialisation Completed Successfully. IPT in Normal Mode.
+				$IPTNEMMANAGEMENT_lookup_key =  "trBootSuccess" + "." + $reasonCode
+			
+			case "2": ### - trBootFail
+				# Boot Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trBootFail" + "." + $reasonCode
+				if (match($reasonCode,"8")){
+					$additional_summary = ":" + $additionalInfo
+				}
+
+			case "3": ### - trShutdown
+				# IPT Shutdown at Operator's Request
+				$IPTNEMMANAGEMENT_lookup_key =  "trShutdown" + "." + $reasonCode
+			
+			case "4": ### - trRestart
+				# IPT Reboot
+				$IPTNEMMANAGEMENT_lookup_key =  "trRestart" + "." + $reasonCode
+				if (match($reasonCode,"3")){
+					$additional_summary = ":" + $additionalInfo
+				}
+
+			default:
+				$additional_summary = ":categoryBoot alarm"
+	}
+				
+	case ".1.3.6.1.4.1.36974.2.10.2": # - categoryBulkConfig
+		@AlarmType = "Config"
+		switch($specific-trap) {
+			case "1": ### - trImgSuccDwnld
+				# Configuration Image Downloaded & Validated
+				$IPTNEMMANAGEMENT_lookup_key =  "trImgSuccDwnld" + "." + $reasonCode
+			
+			case "2": ### - trImgFailDwnld
+				# Configuration Image Download Failed
+				$IPTNEMMANAGEMENT_lookup_key =  "trImgFailDwnld" + "." + $reasonCode
+
+			default:
+				$additional_summary = ":categoryBulkConfig alarm"
+				}
+				
+	case ".1.3.6.1.4.1.36974.2.10.3": # - categoryFirmware
+		@AlarmType = "Firmware"
+		switch($specific-trap) {
+			case "1": ### - trSuccFwDwnld
+				# Firmware Image Downloaded & Validated
+				$IPTNEMMANAGEMENT_lookup_key =  "trSuccFwDwnld" + "." + $reasonCode
+
+			case "2": ### - trFailFwDwnld
+				# Firmware Image Download Failed
+				$IPTNEMMANAGEMENT_lookup_key =  "trFailFwDwnld" + "." + $reasonCode
+				$additional_summary = ":" + $additionalInfo
+
+			default:
+				$additional_summary = ":categoryFirmware alarm"
+				}
+				
+	case ".1.3.6.1.4.1.36974.2.10.4": # - categoryLocalConfig
+		switch($specific-trap) {
+			case "2": ### - trCfgChg
+				# A Configuration Parameter was Successfully Changed
+				$IPTNEMMANAGEMENT_lookup_key =  "trCfgChg" + "." + $reasonCode
+				@AlarmType = "Config"
+			
+			case "3": ### - trSCEthPort
+				# A Terminal has been Connected to the Local Ethernet LAN
+				$IPTNEMMANAGEMENT_lookup_key =  "trSCEthPort" + "." + $reasonCode
+				@AlarmType = "Security"
+				
+				#MANAGED OBJECT TYPE = LINK
+				$sysName = extract ($managedObject, "(.*)/ETH/[0-9]+")
+				@AlertKey = extract ($managedObject, ".*/(ETH/[0-9]+)")
+
+			case "4": ### - trSC485Port
+				# RS485 Port Enabled/Disabled
+				$IPTNEMMANAGEMENT_lookup_key =  "trSC485Port" + "." + $reasonCode
+				@AlarmType = "RS485"
+			
+				#MANAGED OBJECT TYPE = LINK
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+				$additional_summary = extract($managedObject, ".*/RS485/([0-9]+)$")
+				if (match($reasonCode,"1")){
+					$additional_summary = ":" + $additional_summary + " enabled"
+				} else{
+					$additional_summary = ":" + $additional_summary + " disabled"
+				}
+			
+			case "5": ### - trConfChgHw
+				# IPT Equipment Component Change
+				$IPTNEMMANAGEMENT_lookup_key =  "trConfChgHw" + "." + $reasonCode
+				@AlarmType = "HardwareComponent"
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				$sysName = extract ($managedObject, "(.*)/ECP")
+				@AlertKey = extract ($managedObject, ".*/(ECP)")
+			
+			case "7": ### - trECPChanged
+				# IPT Equipment Configuration Plug Changed - IPT Configuration Data Erased
+				$IPTNEMMANAGEMENT_lookup_key =  "trECPChanged" + "." + $reasonCode
+				@AlarmType = "Config"
+				$additional_summary = ":" + $additionalInfo
+				@ExpireTime = 259200
+
+			default:
+				$additional_summary = ":categoryLocalConfig alarm"
+				}
+				
+	case ".1.3.6.1.4.1.36974.2.10.5": # - categoryHardwareFailures
+		switch($specific-trap) {
+			case "1": ### - trHwFail
+				# Hardware Component Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trHwFail" + "." + $reasonCode
+				@AlarmType = "HardwareFailures"
+				if (match($reasonCode,"3")){
+					$additional_summary = ":" + $additionalInfo
+				}
+				
+				if (match($reasonCode,"2")){
+					if (regmatch($managedObject, "(.*)/PIC[12].*")) {
+						$MANAGED_OBJECT_TYPE = "PIC"
+						$IPTNEMMANAGEMENT_lookup_key =  "trHwFail" + "." + $reasonCode + "." + $MANAGED_OBJECT_TYPE
+					}
+					else if (regmatch($managedObject, "(.*)/DSP")) {
+						$MANAGED_OBJECT_TYPE = "DSP"
+						$IPTNEMMANAGEMENT_lookup_key =  "trHwFail" + "." + $reasonCode + "." + $MANAGED_OBJECT_TYPE
+					}
+				}
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				if (regmatch($managedObject, "(.*)/PIC[12].*")) {
+					$sysName = extract ($managedObject, "(.*)/PIC[12].*")
+					@AlertKey = extract ($managedObject, ".*/(PIC[12].*)")
+				}
+				else if (regmatch($managedObject, "(.*)/DSP")) {
+					$sysName = extract ($managedObject, "(.*)/DSP")
+					@AlertKey = extract ($managedObject, ".*/(DSP)")
+				}
+
+			case "3": ### - trPowerFail
+				# Power Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trPowerFail" + "." + $reasonCode
+				@AlarmType = "Power"
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				$sysName = extract ($managedObject, "(.*)/PSU")
+				@AlertKey = extract ($managedObject, ".*/(PSU)")
+				
+			case "5": ### - trTemperature
+				# Temperature Alarm
+				$IPTNEMMANAGEMENT_lookup_key =  "trTemperature" + "." + $reasonCode
+				$additional_summary = ":" + $additionalInfo
+
+			case "7": ### - trBatteryFail
+				# Battery Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trBatteryFail" + "." + $reasonCode
+				@AlarmType = "Power"
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				$sysName = extract ($managedObject, "(.*)/PSU-BATT")
+				@AlertKey = extract ($managedObject, ".*/(PSU-BATT)")
+
+			case "9": ### - trChargerFail
+				# Charger Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trChargerFail" + "." + $reasonCode
+				@AlarmType = "Power"
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				$sysName = extract ($managedObject, "(.*)/PSU")
+				@AlertKey = extract ($managedObject, ".*/(PSU)")
+
+			case "11": ### - trRTCBatteryFail
+				# Charger Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trRTCBatteryFail" + "." + $reasonCode
+				@AlarmType = "Power"
+				
+				#MANAGED OBJECT TYPE = HW CPT
+				$sysName = extract ($managedObject, "(.*)/RTCBATT")
+				@AlertKey = extract ($managedObject, ".*/(RTCBATT)")
+
+			default:	
+				$additional_summary = ":categoryHardwareFailures alarm"
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.6": # - categoryDiscovery
+		switch($specific-trap) {
+			case "1": ### - trDiscovery
+				# IPT Commissioned
+				$IPTNEMMANAGEMENT_lookup_key =  "trDiscovery" + "." + $reasonCode
+				@AlarmType = "Discovery"
+				@ExpireTime = 259200
+
+			default:	
+				$additional_summary = ":categoryDiscovery alarm"
+		}
+		
+		case ".1.3.6.1.4.1.36974.2.10.7": # - categoryTcpIp
+		switch($specific-trap) {
+			case "1": ### - trNTPFail
+				# NTP Server Not Responding
+				$IPTNEMMANAGEMENT_lookup_key =  "trNTPFail" + "." + $reasonCode
+				@AlarmType = "NTP"
+				$additional_summary = ":" + $additionalInfo
+
+			case "3": ### - trLCCUnobtain
+				# LCC Unobtainable
+				$IPTNEMMANAGEMENT_lookup_key =  "trLCCUnobtain" + "." + $reasonCode
+				@AlarmType = "LCC"
+				$additional_summary = ":" + $additionalInfo
+
+			default:			
+				$additional_summary = ":categoryTcpIp alarm"
+			}
+				
+		case ".1.3.6.1.4.1.36974.2.10.8": # - categoryEndDevices
+		switch($specific-trap) {
+			case "1": ### - trEDUnobtain
+				# End Device/Outstation Unobtainable
+				$IPTNEMMANAGEMENT_lookup_key =  "trEDUnobtain" + "." + $reasonCode
+				@AlarmType = "EndDevice"
+				$additional_summary = ":" + $additionalInfo + ":" + $geogAddr
+
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+
+			case "3": ### - trEDUnidentified
+				# Device Found that is not Present in Configuration Data
+				$IPTNEMMANAGEMENT_lookup_key =  "trEDUnidentified" + "." + $reasonCode
+				@AlarmType = "EndDevice"
+				$additional_summary = ":" + $additionalInfo
+				
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+
+			case "4": ### - trMIDPowerFail
+				# MIDAS Outstation Reports Mains Failure
+				$IPTNEMMANAGEMENT_lookup_key =  "trMIDPowerFail" + "." + $reasonCode
+				@AlarmType = "EndDevice"
+				$additional_summary = ":" + $geogAddr
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+
+			case "5": ### - trOverlongOccupation
+				# MIDAS T1' Timer Expired
+				$IPTNEMMANAGEMENT_lookup_key =  "trOverlongOccupation" + "." + $reasonCode
+				@AlarmType = "EndDevice"
+				$additional_summary = ":" + $geogAddr
+				
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+				@ExpireTime = 259200
+
+			default:		
+				$additional_summary = ":categoryEndDevices alarm"
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.9": # - categoryRS485
+		switch($specific-trap) {
+			case "1": ### - tr485LinkDown
+				# All Devices on RS485 Link Unobtainable
+				$IPTNEMMANAGEMENT_lookup_key =  "tr485LinkDown" + "." + $reasonCode
+				@AlarmType = "RS485"
+				
+				#MANAGED OBJECT TYPE = LINK
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+				$additional_summary = ":" + extract($managedObject, ".*/RS485/([0-9]+)$")
+
+			default:	
+				$additional_summary = ":categoryRS485 alarm"
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.10": # - categoryEthernet
+		switch($specific-trap) {
+			case "1": ### - trEthLinkDown
+				# Ethernet Cable Disconnected
+				$IPTNEMMANAGEMENT_lookup_key =  "trEthLinkDown" + "." + $reasonCode
+				@AlarmType = "Ethernet"
+				
+				#MANAGED OBJECT TYPE = LINK
+				$sysName = extract ($managedObject, "(.*)/ETH/[0-9]+")
+				@AlertKey = extract ($managedObject, ".*/(ETH/[0-9]+)")
+
+			default:	
+				$additional_summary = ":categoryEthernet alarm"
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.11": # - categoryThreshold
+		@AlarmType = "Threshold"
+		switch($specific-trap) {
+			case "1": ### - trThreshTCP
+				# Number of TCP Disconnections Exceeded Limit Per Period
+				$IPTNEMMANAGEMENT_lookup_key =  "trThreshTCP" + "." + $reasonCode
+				$additional_summary = ":" + $additionalInfo + ":" + $geogAddr
+				
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+			
+			case "3": ### - trThreshVoltageAlarm
+				# Voltage Alarm Threshold
+				# Notes: trThreshVoltageAlarm is an exception for the lookup key format
+				# because of duplicate reason codes for Link and ED types
+				
+				
+				if ((match($reasonCode,"3")) or (match($reasonCode,"4")) or (match($reasonCode,"5"))){
+					if (regmatch($managedObject, "(.*)/RS485/[0-9]+$")) {
+						$MANAGED_OBJECT_TYPE = "LINK"
+						$IPTNEMMANAGEMENT_lookup_key =  "trThreshVoltageAlarm" + "." + $reasonCode + "." + $MANAGED_OBJECT_TYPE
+					}
+					else if (regmatch($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")) {
+						$MANAGED_OBJECT_TYPE = "ED"
+						$IPTNEMMANAGEMENT_lookup_key =  "trThreshVoltageAlarm" + "." + $reasonCode + "." + $MANAGED_OBJECT_TYPE
+					}
+				}
+				else{
+					$IPTNEMMANAGEMENT_lookup_key =  "trThreshVoltageAlarm" + "." + $reasonCode
+				}
+
+				if (match($reasonCode,"3"))		{
+					$additional_summary = ":vppHigh(3)"
+				}
+				else if (match($reasonCode,"4"))		{
+					$additional_summary = ":vUpLow(4)"
+				}
+				else if (match($reasonCode,"5"))	{
+					$additional_summary = ":vDownHigh(5)"
+				}
+				else
+				{
+					[@AlarmClass,@Summary,@AlertGroup,@Severity,@Type,@ActionRequired,@ServiceAffecting,@ResilienceAffecting,$MANAGED_OBJECT_TYPE] = lookup($IPTNEMMANAGEMENT_lookup_key,IPTNEMMANAGEMENT_lookup)
+					$additional_summary = ":" + extract (@AlarmClass, ".*\.(.*)")
+				}
+
+				#MANAGED OBJECT TYPE = LINK
+				if (regmatch($managedObject, "(.*)/RS485/[0-9]+$")) {
+					$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+$")
+					@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+				}
+				#MANAGED OBJECT TYPE = ED
+				else if (regmatch($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")) {
+					$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+					@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+					if (match($reasonCode,"3"))	{
+						$additional_summary = ":vppHigh(3):" + $geogAddr
+					}
+				}
+
+			case "5": ### - trThreshELIMO
+				# ELIMO Alarm Threshold
+				$IPTNEMMANAGEMENT_lookup_key =  "trThreshELIMO" + "." + $reasonCode
+				[@AlarmClass,@Summary,@AlertGroup,@Severity,@Type,@ActionRequired,@ServiceAffecting,@ResilienceAffecting,$MANAGED_OBJECT_TYPE] = lookup($IPTNEMMANAGEMENT_lookup_key,IPTNEMMANAGEMENT_lookup)
+				#	$additional_summary = ":" + extract (@AlarmClass, ".*\.(.*)")
+				$additional_summary = ":" + $additionalInfo +":" + extract (@AlarmClass, ".*\.(.*)") + ":" + $geogAddr
+				
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+
+			case "7": ### - trThreshHighAlarmRate
+				# High Alarm Rate
+				$IPTNEMMANAGEMENT_lookup_key =  "trThreshHighAlarmRate" + "." + $reasonCode
+
+			default:	
+				$additional_summary = ":categoryThreshold alarm"			
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.12": # - categorySecurity
+		@AlarmType = "Security"
+		switch($specific-trap) {
+			case "2": ### - trLogin
+				# Login Attempt (Successful or Failed)
+				$IPTNEMMANAGEMENT_lookup_key =  "trLogin" + "." + $reasonCode
+				if (match($reasonCode,"1")){
+					$additional_summary = ":" + "SuccessfulAttempt" + ":" + $additionalInfo
+				}
+				else {
+					$additional_summary = ":" + "UnsuccessfulAttempt" + ":" + $additionalInfo
+				}
+				
+			case "3": ### - trLoginFail
+				# User Locked Out After 3 Failed Login Attempts
+				$IPTNEMMANAGEMENT_lookup_key =  "trLoginFail" + "." + $reasonCode
+				$additional_summary = ":" + $additionalInfo
+
+			default:	
+				$additional_summary = ":categorySecurity alarm"	
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.13": # - categoryDryContactAlarm
+		@AlarmType = "DryContactAlarm"
+		switch($specific-trap) {
+			case "1": ### - trDryContactAlarm
+				# Spare Dry Contact in Alarm State
+				$IPTNEMMANAGEMENT_lookup_key =  "trDryContactAlarm" + "." + $reasonCode
+				$additional_summary = "DryContact" + $reasonCode + ":" + $additionalInfo
+
+			default:	
+				$additional_summary = ":categoryDryContactAlarm alarm"	
+		}
+				
+		case ".1.3.6.1.4.1.36974.2.10.14": # - categoryIPTNEM
+		switch($specific-trap) {
+			case "1": ### - trSCTopology
+				# IPT Removed from Topology Tree
+				$IPTNEMMANAGEMENT_lookup_key =  "trSCTopology" + "." + $reasonCode
+				@AlarmType = "Topology"
+				@ExpireTime = 259200
+			
+			case "2": ### - trIPTIsolation
+				# IPT Isolated from IPTNEM
+				$IPTNEMMANAGEMENT_lookup_key =  "trIPTIsolation" + "." + $reasonCode
+				@AlarmType = "Topology"
+			
+			case "3": ### - trIPTMismatch
+				# IPT Configuration or Firmware Mismatch
+				$IPTNEMMANAGEMENT_lookup_key =  "trIPTMismatch" + "." + $reasonCode
+				@AlarmType = "Mismatch"
+			
+			case "4": ### - trMultipleUnobtainAlarm
+				# Multiple Unobtainable Devices on Link
+				$IPTNEMMANAGEMENT_lookup_key =  "trMultipleUnobtainAlarm" + "." + $reasonCode
+				@AlarmType = "RS485"
+				$additional_summary = ":" + $additionalInfo
+				
+				#MANAGED OBJECT TYPE = LINK
+				if (regmatch($managedObject, "(.*)/RS485/[0-9]+$")) {
+					$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+$")
+					@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+				}
+				
+			case "5": ### - trMultipleRetryAlarm
+				# High Retry Rate to Multiple Devices on Link
+				$IPTNEMMANAGEMENT_lookup_key =  "trMultipleRetryAlarm" + "." + $reasonCode
+				@AlarmType = "Threshold"
+				$additional_summary = ":" + $additionalInfo
+				
+				#MANAGED OBJECT TYPE = LINK
+				if (regmatch($managedObject, "(.*)/RS485/[0-9]+$")) {
+					$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+$")
+					@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+				}				
+
+			case "6": ### - trResourceThreshAlarm
+				# Resource Threshold Exceeded
+				$IPTNEMMANAGEMENT_lookup_key =  "trResourceThreshAlarm" + "." + $reasonCode
+				@AlarmType = "IPTNEM"
+				[@AlarmClass,@Summary,@AlertGroup,@Severity,@Type,@ActionRequired,@ServiceAffecting,@ResilienceAffecting,$MANAGED_OBJECT_TYPE] = lookup($IPTNEMMANAGEMENT_lookup_key,IPTNEMMANAGEMENT_lookup)
+				$additional_summary = ":" + extract (@AlarmClass, ".*\.(.*)") + ":" + $additionalInfo
+
+			case "7": ### - trNetConnLost
+				# Network Connectivity to External System Lost
+				$IPTNEMMANAGEMENT_lookup_key =  "trNetConnLost" + "." + $reasonCode
+				@AlarmType = "IPTNEM"
+				[@AlarmClass,@Summary,@AlertGroup,@Severity,@Type,@ActionRequired,@ServiceAffecting,@ResilienceAffecting,$MANAGED_OBJECT_TYPE] = lookup($IPTNEMMANAGEMENT_lookup_key,IPTNEMMANAGEMENT_lookup)
+				$additional_summary = ":" + extract (@AlarmClass, ".*\.(.*)")
+				#	Code for IPTNEM Failover detection
+				Switch($reasonCode)
+				{
+				case "1":
+					if ( match($cleared, "1"))
+					{
+						IPTNEM_array["Primary"] = 0
+					}
+					else	
+					{
+						IPTNEM_array["Primary"] = 1
+					}
+
+				case "2":
+					if ( match($cleared, "1"))
+					{
+						IPTNEM_array["Backup"] = 0
+					}
+					else	
+					{
+						IPTNEM_array["Backup"] = 1
+					}
+
+				default:
+					log(INFO, "XXXXXXX Default" + $reasonCode)
+				}	
+
+			case "8": ### - trIPTNEMStartup
+				# IPTNEM Startup Notification
+				$IPTNEMMANAGEMENT_lookup_key =  "trIPTNEMStartup" + "." + $reasonCode
+				@AlarmType = "IPTNEM"
+
+			case "9": ### - trIPTNEMShutdown
+				# IPTNEM Shutdown Notification
+				$IPTNEMMANAGEMENT_lookup_key =  "trIPTNEMShutdown" + "." + $reasonCode
+				@AlarmType = "IPTNEM"
+
+			case "10": ### - trMODSChange
+				# End Device MODS Change
+				$IPTNEMMANAGEMENT_lookup_key =  "trMODSChange" + "." + $reasonCode
+				@AlarmType = "EndDevice"
+				#MANAGED OBJECT TYPE = ED
+				$sysName = extract ($managedObject, "(.*)/RS485/[0-9]+/[0-9]+$")
+				@AlertKey = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+				@ExpireTime = 259200
+
+			case "11": ### - trSWException
+				# IPTNEM Internal Software Exception
+				$IPTNEMMANAGEMENT_lookup_key =  "trSWException" + "." + $reasonCode
+				@AlarmType = "IPTNEM"
+				$additional_summary = ":" + $additionalInfo
+
+			default:
+				$additional_summary = ":categoryIPTNEM alarm"	
+		}
+		default:
+			#Do Nothing
+	}
+
+	#	All the common IPT Enterprise field assignments are done below
+		
+	[@AlarmClass,@Summary,@AlertGroup,@Severity,@Type,@ActionRequired,@ServiceAffecting,@ResilienceAffecting,$MANAGED_OBJECT_TYPE] = lookup($IPTNEMMANAGEMENT_lookup_key,IPTNEMMANAGEMENT_lookup)
+	@Node = $sysName
+	
+	#	Ref: HLD v2: 7.2.3	IPT Port Alarm Enrichment - Set PhysicalCard field
+	if (regmatch($managedObject, ".*/RS485/[0-9]+/[0-9]+$")) {
+		@PhysicalCard = extract ($managedObject, ".*/(RS485/[0-9]+/[0-9]+)$")
+	}
+	if (regmatch($managedObject, ".*/RS485/[0-9]+$")) {
+		@PhysicalCard = extract ($managedObject, ".*/(RS485/[0-9]+)$")
+	}
+	if (regmatch($managedObject, ".*/ETH/[0-9]+$")) {
+		@PhysicalCard = extract ($managedObject, ".*/(ETH/[0-9]+)$")
+	}
+
+	#	Ref: HLD v2: 7.1	Netcool Alarm Formatting
+
+	if (match($MANAGED_OBJECT_TYPE,"ED")){
+		#	Node will be set to the complete managedObject instead of the sysName for the End Devices
+		@Node = $managedObject
+		$END_DEVICE_ID = int(extract ($managedObject, ".*/RS485/[0-9]+/([0-9]+)$"))
+		if (regmatch($sysName,".*IPTM[0-9]+")){
+			#identifies a MIDAS Device
+			$TCP_PORT = " [IPT TCP Port-" + lookup($END_DEVICE_ID,IPTNEMMANAGEMENT_EA_to_Midas_device_port) + "]"
+			@EquipmentType = "MID"
+		}
+		else if (regmatch($sysName,".*IPTS[0-9]+")){
+			#identifies a Signal Device
+			$TCP_PORT = " [IPT TCP Port-" + lookup($END_DEVICE_ID,IPTNEMMANAGEMENT_EA_to_Signal_device_port) + "]"
+			@EquipmentType = "SIG"
+		}
+		else {
+			#Unknown Device Type. This Device violates the proposed naming convention is to identify signal and Midas devices (HLD v2: 3.2.1.4)
+			$TCP_PORT = " [IPT TCP Port-Unknown]"
+			@EquipmentType = "TPR"
+		}
+	}
+	else{
+		#	Set default EquipmentType to 'TPR'
+		@EquipmentType = "TPR"
+	}
+
+	#	Ref: HLD v2: 7.1	Netcool Alarm Formatting - Set Summary
+	@Summary = @Summary + $additional_summary + $TCP_PORT
+	
+	
+	#	Do a lookup based on the $severity variable
+	#	This a also a requirement for trDryContactAlarm
+	if (match(@Severity ,"")){
+			[@Severity,@Type] = lookup($severity,IPTNEMMANAGEMENT_Severity)
+	}
+
+	if (match($cleared,"1")) {
+		@Severity = 1
+		@Type = 2
+	}
+	
+	#	If eventTimestamp is not defined in the trap use receiptTimestamp
+	if (match ($eventTimestamp,"")){
+		$eventTimestamp = $receiptTimestamp
+	}
+	#	The $eventTimestamp in hex[Eg:"07 dc 02 02 01 14 2a 08"] and needs to be mapped to $ReceivedTime (epoch)
+	[$year_hex1, $year_hex2, $mon_hex, $day_hex, $hour_hex, $minute_hex1, $second_hex1, $temp] = scanformat($eventTimestamp, "%s %s %s %s %s %s %s %s")
+	$Date_dec = lookup($year_hex1+$year_hex2,IPTNEMMANAGEMENT_HexLookup) + " " + lookup($mon_hex,IPTNEMMANAGEMENT_HexLookup) + " " + lookup($day_hex,IPTNEMMANAGEMENT_HexLookup) + " " + lookup($hour_hex,IPTNEMMANAGEMENT_HexLookup)+" "+lookup($minute_hex1,IPTNEMMANAGEMENT_HexLookup)+" "+lookup($second_hex1,IPTNEMMANAGEMENT_HexLookup)
+	$ReceivedTime = datetotime($Date_dec, "%Y %m %d %H %M %S")
+	
+	#	IPTNEM FAILOVER HANDLING
+	$PrimaryNEM = "10.0.110.121"
+	$BackupNEM = "10.0.110.122"
+	
+	#	Logging to show failover Status
+	$LogString = "XXXXXXXXXX Primary = " + IPTNEM_array["Primary"] + "    Backup = " + IPTNEM_array["Backup"] 
+	log(INFO, $LogString)
+	
+	#	Do Not process IPTM Events
+	if(match($MANAGED_OBJECT_TYPE, "IPTNEM"))
+	{
+		log(INFO, "Passing IPTNEM MO Type")
+	}
+	#	Event from Backup NEM to be passed to the Objectserver		
+	else if( match(IPTNEM_array["Primary"], "0") AND match(IPTNEM_array["Backup"], "1"))
+	{
+		if( match ($PeerIPaddress, $PrimaryNEM))
+		{
+			discard
+			log(INFO, "XXXXXX Discarding Event from PRIMARYNEM")
+		}
+		else
+		{
+			$LogText = "XXXXXX Passing Event from Backup NEM" + $PeerIPaddress
+			log(INFO, $LogText)
+		}
+	}
+	#	Events from the Primary NEM to be passed to the ObjectServer (Discard from backup NEM
+	else if ( match ($PeerIPaddress, $BackupNEM))
+	{
+		discard
+		log(INFO, "XXXXXX Discarding Event from BACKUPNEM")
+	}
+	else
+	{
+		$LogText = "XXXXXX Passing Event from " + $PeerIPaddress
+		log(INFO, $LogText)
+	}
+   
+#	End of IPTNEM Failover Handling
+
+		@Identifier= @Node + " " + @AlertKey + " " + @AlertGroup + " " + @Type + " MTTrapd probe " + @Manager + " " + @AlarmClass
+
+	#details($sequenceNumber,$trapOID,$managedObject,$reasonCode,$eventTimestamp,$receiptTimestamp,$severity,$probableCause,$acknowledged,$acknowledgementTime,$acknowledgementSource,$cleared,$manualClear,$clearanceTime,$clearanceSource,$geogAddr,$remarks)
+	# details($*)

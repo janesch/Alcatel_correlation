@@ -1,0 +1,34 @@
+/*
+NG_OT_RaiseTicket.ipl
+This is an Impact trigger designed to work with the 'NewGen' Scheme and is used as a default action
+
+
+V 0.0 20120515 Chris Janes Original development
+During Development strich version control will NOT be followed until a Beta state 
+is reached
+
+*/
+
+Log("NG_OT_RaiseTicket Starting");
+log("ServerName = " + ServerName );
+log("ServerSerial = " + ServerSerial );
+
+// Raise a ticket
+// Add batch update
+Filter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial + "'";
+DataType = "ha_ncoms_impact_events";
+UpdateExpression = "TTFlag = 1";
+BatchUpdate(DataType, Filter, UpdateExpression);
+
+// take this OTout of processing
+
+DeleteFilter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial + " AND TriggerId = '" + TriggerId ;
+Log ("DeleteFilter = " + DeleteFilter ) ;
+DataType = "OutageTriggerTracking";
+BatchDelete(DataType, DeleteFilter , NULL);
+
+
+Log("NG_OT_RaiseTicket Completed");
+
+
+ 

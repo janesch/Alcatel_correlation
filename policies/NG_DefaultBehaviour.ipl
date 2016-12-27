@@ -1,0 +1,66 @@
+/*
+    CoNGB_Default.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting CoNGB_Default");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+ 
+if(BehaviourStatus = "NotMatched")
+{
+    // do nothing
+    Log("UnMatched");
+    BehaviourStatus = "NotMatched";
+    Activate (NULL, "NG_Actions");
+}
+elseif( TriggerParameter like "RaiseIR")
+{
+    //Raise a IncidentRecord
+    
+}
+
+elseif( TriggerParameter like "XINY.*")
+{
+    Log("XINY");
+    XinYArray = split(TriggerParameter, ":");
+    XinYContainment = ServerName + ServerSerial;
+    Log("XinYContainment = " + XinYContainment);
+    XinYExpireTime = GetDate() + XinYArray[2];
+    Log("XinYExpireTime = " + XinYExpireTime);
+    
+    objNewEvent = NewObject();
+    objNewEvent.TriggerId = TriggerId;
+    objNewEvent.XinYContainment = XinYContainment;
+    objNewEvent.XinYExpireTime = XinYExpireTime;
+    objMyEvent = AddDataItem('OutageTrigger_XINY', objNewEvent);
+    
+    
+    XYDataType = "OutageTrigger_XINY";
+    XYFilter = "TriggerId = '" + TriggerId + "' and XinYContainment = '" + ServerName + ServerSerial + "'";
+    Log ("XYFilter = " + XYFilter ) ;
+    XYCountOnly = False;
+    XinYEvents = GetByFilter(XYDataType, XYFilter, XYCountOnly);
+    NumXinYEvents  = Num;
+    Log ("NumXinYEvents = " + NumXinYEvents );
+    if( NumXinYEvents >= XinYArray[1])
+    {
+        BehaviourStatus = "Matched";
+    }
+    else
+    {
+        BehaviourStatus = "NotMatched";
+    }
+    
+}
+else
+{
+    Log("Else");
+    BehaviourStatus = "Matched";
+    Activate (NULL, "NG_Actions");
+}
+Log("Exiting CoNGB_Default");

@@ -1,0 +1,108 @@
+#NCO_PA3
+#
+# Process Agent Daemon Configuration File 1.1
+#
+
+#
+# List of Processes.
+#
+nco_process 'MasterSocketProbe'
+{
+	Command '$OMNIHOME/probes/nco_p_socket -propsfile $NCHOME/custom/probes/props/socket_HA.props' run as 102
+	Host		=	'nv3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaPA_AWARE
+}
+
+nco_process 'MasterMttrapdProbe'
+{
+	Command '$OMNIHOME/probes/nco_p_mttrapd -propsfile $NCHOME/custom/probes/props/mttrapd_HA.props' run as 0
+	Host		=	'nv3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaPA_AWARE
+}
+
+nco_process 'MasterNNM6Probe'
+{
+	Command '$OMNIHOME/probes/nco_p_nnm6 -propsfile $NCHOME/custom/probes/props/nnm6_HA.props' run as 102
+	Host		=	'nv3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaPA_AWARE
+}
+
+nco_process 'MasterPthns'
+{
+	Command '/opt/ActiveTcl/bin/tclsh /opt/mediation/pthns.tcl -noresync' run as 102
+	Host		=	'nv3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaNOT_PA_AWARE
+}
+
+nco_process 'Master5620samV9Probe'
+{
+	Command '$OMNIHOME/probes/nco_p_alcatel_5620_sam_v7 -propsfile $NCHOME/custom/probes/props/alcatel_5620_sam_v9_HA.props' run as 102
+	Host		=	'cnv3dev3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaPA_AWARE
+}
+
+nco_process 'Master5620samV7Probe'
+{
+	Command '$OMNIHOME/probes/nco_p_alcatel_5620_sam_v7 -propsfile $NCHOME/custom/probes/props/alcatel_5620_sam_v7_HA.props' run as 102
+	Host		=	'nv3'
+	Managed		=	True
+	RestartMsg	=	'${NAME} running as ${EUID} has been restored on ${HOST}.'
+	AlertMsg	=	'${NAME} running as ${EUID} has died on ${HOST}.'
+	RetryCount	=	0
+	ProcessType	=	PaPA_AWARE
+}
+
+
+#
+# List of Services.
+#
+nco_service 'Probes'
+{
+	ServiceType	=	Master
+	ServiceStart	=	Auto
+	process 'MasterSocketProbe' NONE
+	process 'MasterMttrapdProbe' NONE
+	process 'MasterNNM6Probe' NONE
+	process 'MasterPthns' NONE
+	process 'Master5620samV9Probe' NONE
+}
+
+nco_service 'InactiveProcesses'
+{
+	ServiceType	=	Non-Master
+	ServiceStart	=	Non-Auto
+	process 'Master5620samV7Probe' NONE
+}
+
+
+#
+# Routing Table Entries.
+#
+# 'user'	-  (optional) only required for secure mode PAD on target host
+#		   'user' must be member of UNIX group 'ncoadmin'
+# 'password'	-  (optional) only required for secure mode PAD on target host
+#		   use nco_pa_crypt to encrypt.
+nco_routing
+{
+	host 'cnv3dev3' 'nv3_PA'
+}

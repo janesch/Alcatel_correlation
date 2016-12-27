@@ -1,0 +1,44 @@
+/*
+    CoNGB_5620.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting CoNGB_5620");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+
+
+if(TriggerParameter = "LinkDown")
+{
+    Log("Into LinkDown");
+    log("AssetID = " + @AssetID);
+    CoNG_Lib.StiStd(@AssetID, STI_ARRAY);
+    BehaviourStatus = "Matched";
+}
+elseif(TriggerParameter = "Duff")
+{
+    // Do Nothing - Testing AlarmClass : trThreshVoltageAlarm.cmvOutOfRange(6)
+    Log("Into ReachabilityProblem");
+    BehaviourStatus = "Matched";
+}
+else
+{
+    //Epic Fail - Parameter not recognised
+    Log("CoNG_Error TriggerParameter Not Found");
+    BehaviourStatus = "CoNG_Error TriggerParameter Not Found";
+}
+ 
+ 
+ 
+Log("Activating Actions");
+Activate (NULL, "CoNG_Actions");
+Log("Activated Actions"); 
+ 
+ 
+ 
+ 
+Log("Exiting CoNGB_5620");

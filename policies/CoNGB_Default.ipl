@@ -1,0 +1,204 @@
+/*
+    CoNGB_Default.ipl
+    This is an Impact trigger designed to work with the 'NewGen' Scheme and is the default behaviour policy
+    This Document was last updated by $Author$ at £Date$    
+    and is at $Rev$ and is located $URL$
+    
+    V 0.0   20120515    Chris Janes     Original development
+           During Development strict version control will NOT be followed until a Beta state 
+                                        is reached 
+    
+*/
+Log("Starting CoNGB_Default");
+Log("BehaviourStatus = " + BehaviourStatus );
+Log("TriggerParameter = " + TriggerParameter );
+ 
+ 
+if(BehaviourStatus = "NotMatched")
+{
+    // do nothing
+    Log("UnMatched do default Fail Action");
+    BehaviourStatus = "NotMatched";
+    Activate (NULL, "NG_Actions");
+}
+elseif( TriggerParameter like "Default")
+{
+    /*  --------------------------------------------------------------------------
+    This Trigger simple adds all STI associated with the Asset to the event and 
+    cause the associated Trigger Actions to be executed
+    TriggerParameter come isn the form Default
+    --------------------------------------------------------------------------  */    
+    //Get all STI associate with this Sysname
+    CoNG_Lib.StiStd(@AssetID, STI_ARRAY);
+    BehaviourStatus = "Matched";
+    Activate (NULL, "NG_Actions");
+}
+elseif( TriggerParameter like "XINY.*")
+{
+    /*  --------------------------------------------------------------------------
+    This Trigger checks that if there has been a given number of Events (X) associated 
+    with a Containment within a given time (Y). 
+    TriggerParameter come isn the form XINY:<Count for X>:<Time for Y in seconds>
+    --------------------------------------------------------------------------  */ 
+    // 
+    Log("XINY " + TriggerParameter);
+    XinYArray = split(TriggerParameter, ":");
+    
+    // Sort Containment
+    XinYContainment = "";
+    Log("Containment = " + Containment);
+    CoNG_Lib.BuildFilter(Containment, XinYContainment);
+    Log("XinYContainment = " + XinYContainment);
+    
+    //Create record for the XinY table
+    XinYExpireTime = GetDate() + int(XinYArray[2]);
+    Log("XinYExpireTime = " + XinYExpireTime);
+    
+    objNewEvent = NewObject();
+    objNewEvent.TriggerId = TriggerId;
+    objNewEvent.XinYContainment = strip(XinYContainment, "'");
+    objNewEvent.XinYExpireTime = XinYExpireTime;
+    objMyEvent = AddDataItem('OutageTrigger_XINY', objNewEvent);
+    
+    // Clear any records from the XinY table that have expired
+    DeleteFilter = "XinYExpireTime < " + GetDate();
+    Log ("DeleteFilter = " + DeleteFilter ) ;
+    DeleteDataType = "OutageTrigger_XINY";
+    BatchDelete(DeleteDataType, DeleteFilter, NULL);
+    
+    // Find the count of the relevent recors 
+    XYDataType = "OutageTrigger_XINY";
+    XYFilter = "TriggerId = '" + TriggerId + "' and XinYContainment = '" + strip(XinYContainment, "'") + "'";
+    Log ("XYFilter = " + XYFilter ) ;
+    XYCountOnly = False;
+    XinYEvents = GetByFilter(XYDataType, XYFilter, XYCountOnly);
+    NumXinYEvents  = Length(XinYEvents);
+    Log ("NumXinYEvents = " + NumXinYEvents );
+
+    // If we have equalled or exceded X then wave a flag
+    if( NumXinYEvents >= XinYArray[1])
+    {
+        BehaviourStatus = "Matched";
+        Log ("XinY BehaviourStatus = " + BehaviourStatus ) ;
+        SE_Containment = strip(XinYContainment, "'");
+        log("SE_Containment = " + SE_Containment);
+    }
+    else
+    {
+        BehaviourStatus = "NotMatched";
+        Log ("XinY BehaviourStatus = " + BehaviourStatus ) ;
+    }
+    
+}
+elseif( TriggerParameter like "COUNT.*")
+{
+    /*  --------------------------------------------------------------------------
+    This Trigger checks that if there are a number of Events associated with a
+    Containment. TriggerParameter comes in the form COUNT:<Count for Alarm>
+    --------------------------------------------------------------------------  */ 
+    Log("COUNT " + TriggerParameter);
+    CountArray = split(TriggerParameter, ":");
+    
+    //Sort Containment
+    CountContainment = "";
+    Log("Containment = " + Containment);
+    CoNG_Lib.BuildFilter(Containment, CountContainment);
+    Log("CountContainment = " + CountContainment);
+    
+    // Get the Number of Events that are from the containment
+    CountDataType = "ha_ncoms_impact_events";
+    CountFilter = "EventId = '" + @EventId + "' and  " + CountContainment ;
+    Log ("CountFilter = " + CountFilter ) ;
+    CountOnly = False;
+    CountEvents = GetByFilter(CountDataType, CountFilter, CountOnly);
+    NumCountEvents  = Length(CountEvents);
+    Log ("NumCountEvents = " + NumCountEvents );
+    
+    // if the Number of Events from the containment is qual or excede the target wave a flag
+    if( NumCountEvents >= CountArray[1])
+    {
+        BehaviourStatus = "Matched";
+        Log ("Count BehaviourStatus = " + BehaviourStatus ) ;
+        SE_Containment = strip(CountContainment, "'");
+        log("SE_Containment = " + SE_Containment);
+    }
+    else
+    {
+        BehaviourStatus = "NotMatched";
+        Log ("Count BehaviourStatus = " + BehaviourStatus ) ;
+    }
+    
+}
+elseif( TriggerParameter like "RequiredEvents")
+{
+    /*  --------------------------------------------------------------------------
+    This Trigger checks that if the Events associated to this Trigger all exist.
+    The associated events are defines in the table CoNG.Associated Events.
+    The events are constrained by a containment
+    --------------------------------------------------------------------------  */
+    
+    // Get the associated events
+    
+    AEDataType = "CoNGAssocEvents";
+    AEFilter = "TriggerId = '"  + TriggerId + "'" ;
+    Log ("AEFilter = " + AEFilter ) ;
+    CountOnly = False;
+    AE = GetByFilter(AEDataType, AEFilter, CountOnly);
+    NumAE = Length(AE);
+    // If there are some Assoiated Events
+    if ( NumAE > 0)
+    {
+        // Get the Containment
+        Log("Containment = " + Containment);
+        CoNG_Lib.BuildFilter(Containment, AEContainment);
+        Log("AEContainment = " + AEContainment);
+        // Build the filter
+        NEFilter = "EventId in (";
+        CountAE = NumAE;
+        while (CountAE >0)
+        {
+            CountAE = CountAE -1;
+            NEFilter = NEFilter + " '" + AE[CountAE].EventId + "'";
+            if (CountAE > 0)
+            {
+                NEFilter = NEFilter + ", ";
+            }
+            Log("NEFilter[1] = " + NEFilter);
+        }
+        NEFilter = NEFilter + ") and " + AEContainment;
+        Log("NEFilter[2] = " + NEFilter);
+        
+        // Get the Network events that are associated and match the containment
+        NEDataType = "ha_ncoms_impact_events";
+        NE = GetByFilter(NEDataType, NEFilter, CountOnly);
+        NumNE = Length(NE);
+        
+        // Get rid of any duplicated EventId's
+        DistNE = Distinct( NE, "EventId");
+        NumDistNE = length(DistNE);
+        
+        // Do we have all the required events
+        if (NumDistNE = NumAE)
+        {
+            BehaviourStatus = "Matched";
+            Log ("RequiredEvents BehaviourStatus = " + BehaviourStatus ) ;
+            SE_Containment = strip(AEContainment, "'");
+            log("SE_Containment = " + SE_Containment);
+        }
+        else
+        {
+            BehaviourStatus = "NotMatched";
+            Log ("RequiredEvents BehaviourStatus = " + BehaviourStatus ) ;
+        }
+    }
+}
+else
+{
+    //
+    BehaviourStatus = 'CoNG_Error TriggerParameter Not Found';
+    Log("CoNG_Error TriggerParameter Not Found");
+}
+Log("Activating Actions");
+Activate (NULL, "CoNG_Actions");
+Log("Activated Actions");
+Log("Exiting CoNGB_Default");

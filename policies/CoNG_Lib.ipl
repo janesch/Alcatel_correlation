@@ -1,0 +1,333 @@
+/*
+    CoNG_Lib.ipl
+    Library of functions used in CoNG project
+    
+    V 0.0   20120528    Chris Janes     Original development
+                                        During Development strict version control will NOT be followed until a Beta state 
+                                        is reached
+    
+*/
+Function LockAME(ServerName, ServerSerial) 
+{
+    Filter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial ;
+    DataType = "OutageTriggerTracking";
+    STATUS_NVP = STATUS_NVP + "EventLock = 1";
+    BatchUpdate(DataType, Filter, UpdateExpression);
+}
+Function UnLockAME(ServerName, ServerSerial) 
+{
+    Filter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial ;
+    DataType = "OutageTriggerTracking";
+    UpdateExpression = "EventLock = 0  ";
+    BatchUpdate(DataType, Filter, UpdateExpression);
+}
+Function RemoveTrigger(EventId,ServerName, ServerSerial) 
+{
+    DeleteFilter = "ServerName = '" + ServerName + "' AND ServerSerial = " + ServerSerial + " and TriggerId = '" + TriggerId + "'" ;
+    DataType = "OutageTriggerTracking";
+    BatchDelete(DataType, DeleteFilter , NULL);
+}
+Function SuppressME(STATUS_NVP)
+{
+    STATUS_NVP = STATUS_NVP + "SuppressEscl:5";
+}
+Function SevEM(Severity, STATUS_NVP)
+{
+    STATUS_NVP = STATUS_NVP + "Severity:" + Severity;
+}
+Function RaiseIR(STATUS_NVP)
+{
+    STATUS_NVP = STATUS_NVP + "TTFlag:1";
+    Log("<<<<<<<<<<<<<<<<<<< TTFlag >>>>>>>>>>>>>>>>>>>>");
+}
+
+Function RaiseSE(ServerName, ServerSerial, TTFlag, STI_ARRAY, STI_ARRAY_Num)
+{
+
+
+    Count = 0;
+    STI_List = "";
+    While (Count < STI_ARRAY_Num)
+    {
+        Log("Count = " + Count );
+        Log("STI_ARRAY[Count]= " + STI_ARRAY[Count] );
+        STI_List = STI_List + STI_ARRAY[Count];
+        objNewSTIREF = NewObject();
+        objNewSTIREF.ServerSerial = ServerSerial;
+        objNewSTIREF.ServerName = ServerName;
+        objNewSTIREF.STI_ID = STI_ARRAY[Count];
+        objSTIREF = AddDataItem('OutageTriggerSTIRef', objNewSTIREF);        Count = Count + 1;
+        if (Count < STI_ARRAY_Num)
+        {
+            STI_List = STI_List + ", ";
+        }
+    }
+    LenSTI_List = length(STI_List);
+    Log("STI_List = " + STI_List );
+    Log("STI_ARRAY_Num = " + STI_ARRAY_Num );
+    Log("LenSTI_List = " + LenSTI_List );
+    if(LenSTI_List > 64)
+    {
+        STI_List = "To many Values to fit in this field - check the APR Ticket for values";
+    }    
+    if (LenSTI_List = 0)
+    {
+        Log("LenSTI_List = 0");
+        STI_List = "No STIs found";
+    }    
+    
+    //Raise Sythentic Event
+    // Look up BaseEvent
+    NEDataType = "ha_ncoms_impact_events";
+    NEFilter = "ServerName = '"  + ServerName + "' and ServerSerial = "  + ServerSerial;
+    Log ("NEFilter = " + NEFilter ) ;
+    CountOnly = False;
+    NE = GetByFilter(NEDataType, NEFilter, CountOnly);
+    NumNE  = Length(NE);
+    Log("NumNE = " +NumNE);
+    
+    if (NumNE = 1)
+    {
+        log("SE_Containment = " + SE_Containment);
+        
+        LenSE_Containment = length(SE_Containment);
+        if ( LenSE_Containment > 0)
+        {
+            SE_Node = SE_Containment;
+        }
+        else
+        {
+            SE_Node = @Node;
+        }
+        
+        // Check to see if there is an existing Synthetic Event
+
+        SEDataType = "ha_ncoms_impact_events";
+        SEFilter = "Identifier = '" + SE_Node + NE[0].AlarmClass+"SYN'";
+        Log ("SEFilter = " + SEFilter ) ;
+        CountOnly = False;
+        SE = GetByFilter(SEDataType, SEFilter, CountOnly);
+        NumSE  = Length(SE);
+        Log("NumSE = " +NumSE); 
+        
+        If (NumSE = 0)  // Create Synthetic Event
+        {
+
+            Log("Creating A Sythetic Event ");
+            objNewEvent = NewObject();
+            objNewEvent.ClearTime = 0;
+            objNewEvent.FirstRaiseTime = GetDate();
+            objNewEvent.LastRaiseTime = GetDate();
+            objNewEvent.ParentChildTime = GetDate();
+            objNewEvent.Manager = 'Netcool Impact';
+            objNewEvent.Severity = 5;
+            objNewEvent.FirstOccurrence = GetDate();
+            objNewEvent.LastOccurrence = GetDate();
+            objNewEvent.Type = 1;
+            objNewEvent.ParentChildFlag = 8;
+            objNewEvent.ImpactFlag = 1900;
+            objNewEvent.ChildID = ChildID;
+            objNewEvent.Node = SE_Node;
+            objNewEvent.OwnerUID = 65534;
+            objNewEvent.TTFlag = TTFlag;
+            objNewEvent.AssetGeographicAddress = NE[0].AssetGeographicAddress;
+            objNewEvent.RCCArea = NE[0].RCCArea;
+            objNewEvent.AssetMotorway = NE[0].AssetMotorway;
+            objNewEvent.PhysicalCard = NE[0].PhysicalCard;
+            objNewEvent.AlertKey = NE[0].AlertKey;
+            objNewEvent.InServiceStatus = "In Service";
+            objNewEvent.AlertGroup = NE[0].AlertGroup;
+            objNewEvent.EventId = "SYN" + NE[0].EventId;
+            objNewEvent.AlarmClass = "SYN" + NE[0].AlarmClass;
+            objNewEvent.Identifier = SE_Node + NE[0].AlarmClass+"SYN";
+            objNewEvent.Summary = "Synthetic Event Generated By " + NE[0].AlarmClass;
+            objNewEvent.STINum = STI_ARRAY_Num ;
+            objNewEvent.STIRef = STI_List  ;
+            objMyEvent = AddDataItem('ha_ncoms_impact_events', objNewEvent);
+        }
+        else    // there is an existing SE
+        {
+            Log("SE already exists - update Tally");
+            // Increment Tally of SE
+            NewTally = int(SE[0].Tally) + 1;
+            Log ("SEFilter = " + SEFilter ) ;
+
+            SEUpdateExpression =  "Tally = " + NewTally  ;
+            Log("SEUpdateExpression = " + SEUpdateExpression );
+            BatchUpdate(SEDataType, SEFilter, SEUpdateExpression);            
+        }
+    }
+    
+}
+
+
+Function UpdateME(ServerName, ServerSerial, STATUS_NVP, STI_ARRAY)
+{
+    UpdateExpression = "";
+    Log("<<<<<<<<< STATUS_NVP = " + STATUS_NVP );
+    LenSTATUS_NVP = length(STATUS_NVP);
+    log("LenSTATUS_NVP = " + LenSTATUS_NVP);
+    CountSTATUS_NVP = 0;
+    while (CountSTATUS_NVP < LenSTATUS_NVP)
+    {
+        log("STATUS_NVP[CountSTATUS_NVP] = " + STATUS_NVP[CountSTATUS_NVP]);
+        ArrayFields = split(STATUS_NVP[CountSTATUS_NVP], ":");
+        // if it's the first entry then it does NOT need to be preceeded by a ','
+        log("Length(UpdateExpression) = " + Length(UpdateExpression) );
+        
+        if (Length(UpdateExpression) =0)
+        {
+            //
+        }
+        else
+        {
+            UpdateExpression = UpdateExpression + ", ";
+        }
+        Log("ArrayFields[0] = " + ArrayFields[0] + "    ArrayFields[1] = " + ArrayFields[1]);
+        if( ArrayFields[0] =  "TTFlag" )
+        {
+            UpdateExpression = UpdateExpression + "TTFlag = " + ArrayFields[1] ;
+        }
+        elseif( ArrayFields[0] = "RemoteNode")
+        {
+            UpdateExpression = UpdateExpression + "RemoteNode = '" + ArrayFields[1] + "'" ;
+        }
+        elseif( ArrayFields[0] = "STI_HA_Impact")
+        {
+            UpdateExpression = UpdateExpression + "STI_HA_Impact = " + ArrayFields[1] ;
+        }
+        elseif( ArrayFields[0] = "Severity")
+        {
+            UpdateExpression = UpdateExpression + "Severity = " + ArrayFields[1] ;
+        }
+        elseif( ArrayFields[0] = "SuppressEscl")
+        {
+            UpdateExpression = UpdateExpression + "SuppressEscl = " + ArrayFields[1] ;
+        }        
+        elseif( ArrayFields[0] = "ImpactFlag")
+        {
+            UpdateExpression = UpdateExpression + "ImpactFlag = " + ArrayFields[1] ;
+        }
+        elseif( ArrayFields[0] = "TTFlag")
+        {
+            UpdateExpression = UpdateExpression + "TTFlag = " + ArrayFields[1] ;
+        }
+        else
+        {
+            Log("Unable to process STATUS_NVP entry " + ArrayFields[0] + " with a value of " + ArrayFields[1]) ;
+        }
+        CountSTATUS_NVP = CountSTATUS_NVP + 1;
+    }
+
+    STI_ARRAY_Num = Length(STI_ARRAY);
+    UpdateExpression = UpdateExpression + ", STINum = " + STI_ARRAY_Num ;
+    Count = 0;
+    STI_List = "";
+    While (Count < STI_ARRAY_Num)
+    {
+         Log("Count = " + Count );
+         Log("STI_ARRAY[Count]= " + STI_ARRAY[Count] );
+         STI_List = STI_List + STI_ARRAY[Count];
+         objNewSTIREF = NewObject();
+         objNewSTIREF.ServerSerial = ServerSerial;
+         objNewSTIREF.ServerName = ServerName;
+         objNewSTIREF.STI_ID = STI_ARRAY[Count];
+         objSTIREF = AddDataItem('OutageTriggerSTIRef', objNewSTIREF);
+         Count = Count + 1;
+         if (Count < STI_ARRAY_Num)
+         {
+             STI_List = STI_List + ", ";
+         }
+    }
+    LenSTI_List = length(STI_List);
+    Log("STI_List = " + STI_List );
+    Log("STI_ARRAY_Num = " + STI_ARRAY_Num );
+    Log("LenSTI_List = " + LenSTI_List );
+    if(LenSTI_List > 64)
+    {
+        Log("To many Values to fit in this field");
+         STI_List = "To many Values to fit in this field - check the APR Ticket for values";
+    }
+    if (STI_ARRAY_Num = 0)
+    {
+        Log("STI_ARRAY_Num = 0");
+        STI_List = "No STIs found";
+    }
+
+
+    DataType = "ha_ncoms_impact_events";
+    Filter = "ServerName = '"  + ServerName + "' and ServerSerial = "  + ServerSerial;
+    Log("Filter = " + Filter );
+
+    UpdateExpression = UpdateExpression + ", STIRef = '" + STI_List + "'" ;
+    Log("UpdateExpression = " + UpdateExpression );
+    BatchUpdate(DataType, Filter, UpdateExpression);
+}
+
+
+function StiStd(ASSET_ID, STI_ARRAY)
+{
+
+        Log("Into StiStd");
+
+
+        //      Look up all STI where Asset_ID from above
+        STIDataType = "Circee_View_Asset_STI";
+        STIFilter = "ASSET_ID = "  + ASSET_ID ;
+        Log ("STIFilter = " + STIFilter ) ;
+        CountOnly = False;
+        STI = GetByFilter(STIDataType, STIFilter, CountOnly);
+        NumSTI = Length(STI);
+        if(NumSTI > 0)     
+        {
+            Log("Into STI_ARRAY  ");
+            STI_COUNT = 0;
+            while (STI_COUNT < NumSTI)
+            {
+                STI_ARRAY = STI_ARRAY + STI[STI_COUNT].STI_ID;
+                STI_COUNT = STI_COUNT + 1 ;
+            }
+            Log ("STI_ARRAY = " + STI_ARRAY ) ;
+            Log ("STI_COUNT = " + STI_COUNT ) ;
+        }
+
+        // This is the info passed to Actions
+        STI_ARRAY = distinct(STI_ARRAY);
+        Log ("STI_ARRAY = " + STI_ARRAY ) ;
+
+}
+
+Function BuildFilter(InString, ReturnString) 
+{
+    Log ("Into Build Filter") ;
+        Log ("InString = " + InString ) ;
+    FilterArray = split(InString, ":");
+    NumFilterArray = length(FilterArray);
+        Log ("NumFilterArray = " + NumFilterArray ) ;
+    CountFilterArray = 0;
+    ReturnString = "";
+    while (CountFilterArray < NumFilterArray)
+    {
+        Log ("CountFilterArray = " + CountFilterArray ) ;
+        if(CountFilterArray > 0)
+        {
+            ReturnString = ReturnString + " and ";
+        }
+        if(FilterArray[CountFilterArray] = "SYSNAME")
+        {
+            ReturnString = "SYSNAME = '" + @Node + "'";
+        }
+        if(FilterArray[CountFilterArray] = "Node")
+        {
+            ReturnString = "Node = '" + @Node + "'";
+        }
+        if(FilterArray[CountFilterArray] = "TS")
+        {
+            ReturnString = "TSB = '' and TSA = '" + @TSA + "'";
+        }
+        CountFilterArray = CountFilterArray + 1;
+        Log ("CountFilterArray = " + CountFilterArray ) ;
+        Log ("ReturnString = " + ReturnString ) ;
+    }
+    
+}
